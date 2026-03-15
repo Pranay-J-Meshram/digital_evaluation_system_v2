@@ -4,6 +4,7 @@ from config import Config
 import os
 from functools import wraps
 from flask import session, redirect, url_for
+import pandas as pd
 
 
 app = Flask(__name__)
@@ -134,34 +135,68 @@ def admin_dashboard():
 @app.route('/faculty_dashboard')
 @faculty_required
 def faculty_dashboard():
-    return render_template("faculty/faculty_dashboard.html")
+     if "role" not in session or session["role"] != "faculty":
+        return redirect("/")
+     return render_template("faculty/faculty_dashboard.html")
+    
 
 
 @app.route('/invigilator_dashboard')
 @invigilator_required
 def invigilator_dashboard():
-    return render_template("invigilator/invigilator_dashboard.html")
-
-
+     if "role" not in session or session["role"] != "invigilator":
+        return redirect("/")
+     return render_template("invigilator/invigilator_dashboard.html")
+     
+    
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
-@app.route('/view_students')
-@admin_required
+
+@app.route("/view_students", methods=["GET", "POST"])
 def view_students():
 
-    conn = get_db_connection()
+    if session.get("role") != "admin":
+        return redirect("/login")
 
-    students = conn.execute(
-        "SELECT * FROM students"
-    ).fetchall()
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT department FROM departments")
+    departments = cursor.fetchall()
+
+    students = []
+
+    if request.method == "POST":
+
+        department = request.form.get("department")
+        year = request.form.get("year")
+
+        if year == "all":
+
+            cursor.execute("""
+            SELECT * FROM students
+            WHERE department=?
+            ORDER BY year, roll_no
+            """, (department,))
+
+        else:
+
+            cursor.execute("""
+            SELECT * FROM students
+            WHERE department=? AND year=?
+            ORDER BY roll_no
+            """, (department, year))
+
+        students = cursor.fetchall()
 
     conn.close()
 
     return render_template(
         "admin/view_students.html",
+        departments=departments,
         students=students
     )
 
@@ -464,6 +499,39 @@ def view_subjects():
     conn.close()
 
     return render_template("admin/view_courses.html", courses=courses)
+
+@app.route("/bulk_upload_students", methods=["POST"])
+def bulk_upload_students():
+
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    file = request.files["file"]
+
+    if file:
+
+        df = pd.read_excel(file)
+
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+
+        for index, row in df.iterrows():
+
+            cursor.execute("""
+            INSERT OR IGNORE INTO students
+            (roll_no, student_name, department, year)
+            VALUES (?, ?, ?, ?)
+            """, (
+                row["roll_no"],
+                row["student_name"],
+                row["department"],
+                str(row["year"])
+            ))
+
+        conn.commit()
+        conn.close()
+
+    return redirect("/view_students")
 
 if __name__ == "__main__":
     app.run(debug=True)

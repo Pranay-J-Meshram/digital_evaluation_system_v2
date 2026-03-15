@@ -6,6 +6,56 @@
     <title>Digital Evaluation System</title>
 
     <style>
+        /* student management */
+        .filters form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        select,
+        button,
+        input {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        table th,
+        table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        table th {
+            background: #34495e;
+            color: white;
+        }
+
+        .edit-btn {
+            background: #3498db;
+            color: white;
+            padding: 5px 10px;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 5px 10px;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+
         /* Dashboard cards */
 
         .dashboard-card {
@@ -89,6 +139,21 @@
 
         .content.full {
             margin-left: 0;
+        }
+
+        /* bulk upload button */
+
+        button {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #27ae60;
         }
     </style>
 
