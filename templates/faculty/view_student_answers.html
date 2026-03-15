@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Student Answers</h2>
+
+<table border="1">
+
+    <tr>
+        <th>Roll No</th>
+        <th>Student Name</th>
+        <th>Course</th>
+        <th>Exam</th>
+        <th>Answer Sheet</th>
+        <th>Evaluate</th>
+    </tr>
+
+    {% for a in answers %}
+
+    <tr>
+
+        <td>{{a['roll_no']}}</td>
+        <td>{{a['student_name']}}</td>
+        <td>{{a['course_code']}}</td>
+        <td>{{a['exam_name']}}</td>
+
+        <td>
+            <a href="/{{a['file_path']}}" target="_blank">
+                View Answer
+            </a>
+        </td>
+
+        <td>
+            <a href="/evaluate/{{a['id']}}">
+                Evaluate
+            </a>
+        </td>
+
+    </tr>
+
+    {% endfor %}
+
+</table>
+
+<br>
+
+<a href="/faculty_dashboard">Back</a>
+{% endblock %}

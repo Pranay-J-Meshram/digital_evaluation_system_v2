@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Evaluate Answer</h2>
+
+Student: {{answer['student_name']}} <br>
+Course: {{answer['course_code']}} <br>
+Exam: {{answer['exam_name']}}
+
+<hr>
+
+<h3>Student Answer</h3>
+
+<a href="/{{answer['student_file']}}" target="_blank">
+    Open Student Answer
+</a>
+
+<br><br>
+
+<h3>Model Answer</h3>
+
+<a href="/{{answer['model_file']}}" target="_blank">
+    Open Model Answer
+</a>
+
+<hr>
+
+<form method="POST">
+
+    Marks<br>
+    <input type="number" name="marks">
+
+    <br><br>
+
+    Comments<br>
+    <textarea name="comments"></textarea>
+
+    <br><br>
+
+    <button type="submit">Submit Evaluation</button>
+
+</form>
+{% endblock %}

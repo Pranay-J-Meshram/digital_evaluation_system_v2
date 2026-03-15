@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Students</h2>
+
+<table border="1">
+
+    <tr>
+        <th>ID</th>
+        <th>Roll No</th>
+        <th>Name</th>
+        <th>Department</th>
+        <th>Year</th>
+    </tr>
+
+    {% for s in students %}
+
+    <tr>
+        <td>{{s['id']}}</td>
+        <td>{{s['roll_no']}}</td>
+        <td>{{s['student_name']}}</td>
+        <td>{{s['department']}}</td>
+        <td>{{s['year']}}</td>
+    </tr>
+
+    {% endfor %}
+
+</table>
+
+<br>
+
+<a href="/admin_dashboard">Back</a>
+{% endblock %}

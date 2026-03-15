@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Upload Question Paper</h2>
+
+<form method="POST" enctype="multipart/form-data">
+
+    Course
+
+    <select name="course_id">
+
+        {% for c in courses %}
+
+        <option value="{{c['id']}}">
+            {{c['course_code']}} - {{c['course_name']}}
+        </option>
+
+        {% endfor %}
+
+    </select>
+
+    <br><br>
+
+    Exam
+
+    <select name="exam_id">
+        {% for e in exams %}
+        <option value="{{e['id']}}">
+            {{e['exam_name']}}
+        </option>
+        {% endfor %}
+    </select>
+
+    <br><br>
+
+    Upload File
+
+    <input type="file" name="file">
+
+    <br><br>
+
+    <button type="submit">Upload</button>
+
+</form>
+
+<br>
+
+<a href="/admin_dashboard">Back</a>
+{% endblock %}

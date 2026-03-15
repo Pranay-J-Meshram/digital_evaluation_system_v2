@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<h2>Results Dashboard</h2>
+
+<table border="1">
+
+    <tr>
+        <th>Roll No</th>
+        <th>Student Name</th>
+        <th>Course</th>
+        <th>Exam</th>
+        <th>Marks</th>
+        <th>Status</th>
+    </tr>
+
+    {% for r in results %}
+
+    <tr>
+        <td>{{ r['roll_no'] }}</td>
+        <td>{{ r['student_name'] }}</td>
+        <td>{{ r['course_code'] }}</td>
+        <td>{{ r['exam_name'] }}</td>
+        <td>{{ r['marks'] }}</td>
+
+        <td>
+            {% if r['marks'] >= 40 %}
+            Pass
+            {% else %}
+            Fail
+            {% endif %}
+        </td>
+
+    </tr>
+
+    {% endfor %}
+
+</table>
+
+<br>
+
+<h3>Marks Distribution</h3>
+
+<canvas id="marksChart"></canvas>
+
+<script>
+
+    const labels = [
+        {% for r in results %}
+    "{{ r['roll_no'] }}",
+        {% endfor %}
+];
+
+    const marks = [
+        {% for r in results %}
+    { { r['marks'] } },
+    {% endfor %}
+];
+
+    new Chart(document.getElementById("marksChart"), {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Marks",
+                data: marks
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+</script>
+
+{% endblock %}
