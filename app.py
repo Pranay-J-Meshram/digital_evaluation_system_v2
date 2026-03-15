@@ -51,9 +51,45 @@ def home():
     return render_template("login.html")
 
 
-@app.route("/admin_dashboard")
+@app.route('/admin_dashboard')
 def admin_dashboard():
-    return render_template("admin/admin_dashboard.html")
+
+    if 'role' not in session or session['role'] != 'admin':
+        return redirect(url_for('login'))
+
+    conn = sqlite3.connect("database.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # statistics queries
+    cursor.execute("SELECT COUNT(*) as total_students FROM students")
+    total_students = cursor.fetchone()["total_students"]
+
+    cursor.execute("SELECT COUNT(*) as total_courses FROM courses")
+    total_courses = cursor.fetchone()["total_courses"]
+
+    cursor.execute("SELECT COUNT(*) as total_exams FROM exams")
+    total_exams = cursor.fetchone()["total_exams"]
+
+    cursor.execute("SELECT COUNT(*) as total_answers FROM student_answers")
+    total_answers = cursor.fetchone()["total_answers"]
+
+    cursor.execute("SELECT COUNT(*) as evaluated FROM evaluation")
+    evaluated = cursor.fetchone()["evaluated"]
+
+    pending = total_answers - evaluated
+
+    conn.close()
+
+    return render_template(
+        "admin/admin_dashboard.html",
+        total_students=total_students,
+        total_courses=total_courses,
+        total_exams=total_exams,
+        total_answers=total_answers,
+        evaluated=evaluated,
+        pending=pending
+    )
 
 
 @app.route("/faculty_dashboard")

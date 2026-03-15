@@ -4,12 +4,50 @@
 
 <h2>Admin Dashboard</h2>
 
-<p>Welcome {{ user }}</p>
+<div style="display:flex;gap:20px;flex-wrap:wrap">
 
-<hr>
+    <a href="/view_students" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Total Students</h3>
+            <h2>{{total_students}}</h2>
+        </div>
+    </a>
 
-<h3>Quick Overview</h3>
+    <a href="/view_courses" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Total Courses</h3>
+            <h2>{{total_courses}}</h2>
+        </div>
+    </a>
 
-<p>Use the sidebar to manage the system.</p>
+    <a href="/view_exams" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Total Exams</h3>
+            <h2>{{total_exams}}</h2>
+        </div>
+    </a>
+
+    <a href="/upload_answer" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Answer Sheets</h3>
+            <h2>{{total_answers}}</h2>
+        </div>
+    </a>
+
+    <a href="/results_dashboard" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Evaluated</h3>
+            <h2>{{evaluated}}</h2>
+        </div>
+    </a>
+
+    <a href="/faculty_dashboard" style="text-decoration:none;color:black">
+        <div class="dashboard-card">
+            <h3>Pending Evaluation</h3>
+            <h2>{{pending}}</h2>
+        </div>
+    </a>
+
+</div>
 
 {% endblock %}
