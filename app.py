@@ -533,5 +533,54 @@ def bulk_upload_students():
 
     return redirect("/view_students")
 
+@app.route("/delete_student/<int:id>")
+def delete_student(id):
+
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM students WHERE id=?", (id,))
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/view_students")
+
+@app.route("/edit_student/<int:id>", methods=["GET", "POST"])
+def edit_student(id):
+
+    if session.get("role") != "admin":
+        return redirect("/login")
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    if request.method == "POST":
+
+        name = request.form["student_name"]
+        department = request.form["department"]
+        year = request.form["year"]
+
+        cursor.execute("""
+        UPDATE students
+        SET student_name=?, department=?, year=?
+        WHERE id=?
+        """, (name, department, year, id))
+
+        conn.commit()
+        conn.close()
+
+        return redirect("/view_students")
+
+    cursor.execute("SELECT * FROM students WHERE id=?", (id,))
+    student = cursor.fetchone()
+
+    conn.close()
+
+    return render_template("admin/edit_student.html", student=student)
+
 if __name__ == "__main__":
     app.run(debug=True)
