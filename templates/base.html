@@ -4,7 +4,10 @@
 <head>
 
     <title>Digital Evaluation System</title>
+
     <style>
+        /* Dashboard cards */
+
         .dashboard-card {
             border: 1px solid #ccc;
             padding: 20px;
@@ -18,22 +21,44 @@
             transform: scale(1.05);
             cursor: pointer;
         }
-    </style>
 
-    <style>
+        /* Layout */
+
         body {
             font-family: Arial;
             margin: 0;
             display: flex;
         }
 
+        /* Menu Button */
+
+        .menu-btn {
+            position: fixed;
+            top: 30px;
+            left: 10px;
+            font-size: 26px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        /* Sidebar */
+
         .sidebar {
-            width: 220px;
+            width: 200px;
             min-height: 100vh;
             background: #34495e;
             color: white;
-            padding: 20px;
+            padding: 40px;
+            transition: 0.3s;
         }
+
+        /* Sidebar hidden */
+
+        .sidebar.hidden {
+            margin-left: -290px;
+        }
+
+        /* Sidebar links */
 
         .sidebar h3 {
             margin-top: 0;
@@ -52,10 +77,18 @@
             background: #2c3e50;
         }
 
+        /* Content */
+
         .content {
             flex: 1;
-            padding: 30px;
+            padding: 40px;
             background: #f5f6fa;
+            transition: 0.3s;
+            margin-left: 0px;
+        }
+
+        .content.full {
+            margin-left: 0;
         }
     </style>
 
@@ -63,9 +96,13 @@
 
 <body>
 
+    <!-- MENU BUTTON -->
+
+    <div class="menu-btn" onclick="toggleSidebar()">☰</div>
+
     {% if session.get('role') == 'admin' %}
 
-    <div class="sidebar">
+    <div id="sidebar" class="sidebar">
 
         <h3>Admin Panel</h3>
 
@@ -73,7 +110,7 @@
         <a href="/view_users">Manage Users</a>
         <a href="/view_students">Students</a>
         <a href="/view_courses">Courses</a>
-        <a href="/view_exams">exams</a>
+        <a href="/view_exams">Exams</a>
         <a href="/upload_question">Upload Question Paper</a>
         <a href="/upload_model_answer">Upload Model Answer</a>
         <a href="/results_dashboard">Results Analytics</a>
@@ -81,11 +118,11 @@
 
     </div>
 
-    <div class="content admin-content">
+    <div id="content" class="content">
 
         {% elif session.get('role') == 'faculty' %}
 
-        <div class="sidebar">
+        <div id="sidebar" class="sidebar">
 
             <h3>Faculty Panel</h3>
 
@@ -95,23 +132,25 @@
 
         </div>
 
-        <div class="content admin-content">
+        <div id="content" class="content">
 
             {% elif session.get('role') == 'invigilator' %}
 
-            <div class="sidebar">
+            <div id="sidebar" class="sidebar">
+
                 <h3>Invigilator Panel</h3>
+
                 <a href="/invigilator_dashboard">Dashboard</a>
                 <a href="/upload_answer">Upload Student Answers</a>
                 <a href="/logout">Logout</a>
 
             </div>
 
-            <div class="content admin-content">
+            <div id="content" class="content">
 
                 {% else %}
 
-                <div class="content">
+                <div id="content" class="content">
 
                     {% endif %}
 
@@ -119,6 +158,25 @@
                     {% endblock %}
 
                 </div>
+
+                <script>
+
+                    function toggleSidebar() {
+
+                        let sidebar = document.getElementById("sidebar");
+                        let content = document.getElementById("content");
+
+                        if (sidebar) {
+                            sidebar.classList.toggle("hidden");
+                        }
+
+                        if (content) {
+                            content.classList.toggle("full");
+                        }
+
+                    }
+
+                </script>
 
 </body>
 
