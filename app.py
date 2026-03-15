@@ -2,10 +2,48 @@ from flask import Flask, render_template, request, redirect, url_for, session, s
 import sqlite3
 from config import Config
 import os
+from functools import wraps
+from flask import session, redirect, url_for
 
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+
+        if 'role' not in session or session['role'] != 'admin':
+            return redirect(url_for('login'))
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def faculty_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+
+        if 'role' not in session or session['role'] != 'faculty':
+            return redirect(url_for('login'))
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def invigilator_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+
+        if 'role' not in session or session['role'] != 'invigilator':
+            return redirect(url_for('login'))
+
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 def get_db_connection():
@@ -52,6 +90,7 @@ def home():
 
 
 @app.route('/admin_dashboard')
+@admin_required
 def admin_dashboard():
 
     if 'role' not in session or session['role'] != 'admin':
@@ -92,12 +131,14 @@ def admin_dashboard():
     )
 
 
-@app.route("/faculty_dashboard")
+@app.route('/faculty_dashboard')
+@faculty_required
 def faculty_dashboard():
     return render_template("faculty/faculty_dashboard.html")
 
 
-@app.route("/invigilator_dashboard")
+@app.route('/invigilator_dashboard')
+@invigilator_required
 def invigilator_dashboard():
     return render_template("invigilator/invigilator_dashboard.html")
 
@@ -107,7 +148,8 @@ def logout():
     session.clear()
     return redirect("/")
 
-@app.route("/view_students")
+@app.route('/view_students')
+@admin_required
 def view_students():
 
     conn = get_db_connection()
@@ -124,6 +166,7 @@ def view_students():
     )
 
 @app.route("/upload_question", methods=["GET","POST"])
+@admin_required
 def upload_question():
 
     conn = get_db_connection()
@@ -164,6 +207,7 @@ def upload_question():
     )
 
 @app.route("/upload_model_answer", methods=["GET","POST"])
+@admin_required
 def upload_model_answer():
 
     conn = get_db_connection()
@@ -204,6 +248,7 @@ def upload_model_answer():
     )
 
 @app.route("/upload_answer", methods=["GET","POST"])
+@invigilator_required
 def upload_answer():
 
     conn = get_db_connection()
@@ -275,6 +320,7 @@ def add_exam():
     return render_template("admin/add_exam.html", exams=exams)
 
 @app.route("/view_exams")
+@admin_required
 def view_exams():
 
     conn = get_db_connection()
@@ -291,6 +337,7 @@ def view_exams():
     )
 
 @app.route("/view_student_answers")
+@faculty_required
 def view_student_answers():
 
     conn = get_db_connection()
@@ -317,6 +364,7 @@ def view_student_answers():
     )
 
 @app.route("/evaluate/<int:answer_id>", methods=["GET","POST"])
+@faculty_required
 def evaluate(answer_id):
 
     conn = get_db_connection()
@@ -362,6 +410,7 @@ def evaluate(answer_id):
     )
 
 @app.route("/results_dashboard")
+@admin_required
 def results_dashboard():
 
     conn = get_db_connection()
@@ -387,6 +436,7 @@ def results_dashboard():
         results=results
     )
 @app.route("/view_users")
+@admin_required
 def view_users():
 
     if "user" not in session or session["role"] != "admin":
@@ -401,6 +451,7 @@ def view_users():
     return render_template("admin/view_users.html", users=users)
 
 @app.route("/view_courses")
+@admin_required
 def view_subjects():
 
     if "user" not in session or session["role"] != "admin":
