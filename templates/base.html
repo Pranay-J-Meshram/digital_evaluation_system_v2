@@ -6,6 +6,70 @@
     <title>Digital Evaluation System</title>
 
     <style>
+        .user-info {
+            margin-left: auto;
+            font-size: 14px;
+        }
+
+        /* main header  */
+
+        .line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .line h1,
+        .line h2 {
+            margin: 0;
+        }
+
+        .line {
+            flex-wrap: wrap;
+        }
+
+        .main-header {
+            display: flex;
+            align-items: center;
+            background: linear-gradient(to right, #2c3e50, #3498db);
+            color: rgb(242, 241, 241);
+            padding: 1px 10px;
+            border-radius: 2px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-right: 20px;
+        }
+
+        .header-text h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .header-text h2 {
+            margin: 10px 0;
+            font-size: 20px;
+        }
+
+        .header-text h3 {
+            margin: 5px 0;
+            font-size: 18px;
+        }
+
+        .header-text h4 {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .sub-text {
+            font-size: 13px;
+            color: #ecf0f1;
+            opacity: 0.8;
+        }
+
         /* student management */
         .filters form {
             display: flex;
@@ -75,8 +139,11 @@
         /* Layout */
 
         body {
-            font-family: Arial;
             margin: 0;
+            font-family: Arial;
+        }
+
+        .main-container {
             display: flex;
         }
 
@@ -84,9 +151,10 @@
 
         .menu-btn {
             position: fixed;
-            top: 30px;
+            top: 150px;
             left: 10px;
             font-size: 26px;
+            color: rgb(11, 226, 242);
             cursor: pointer;
             z-index: 1000;
         }
@@ -94,7 +162,7 @@
         /* Sidebar */
 
         .sidebar {
-            width: 200px;
+            width: 175px;
             min-height: 100vh;
             background: #34495e;
             color: white;
@@ -105,7 +173,7 @@
         /* Sidebar hidden */
 
         .sidebar.hidden {
-            margin-left: -290px;
+            margin-left: -200px;
         }
 
         /* Sidebar links */
@@ -131,7 +199,7 @@
 
         .content {
             flex: 1;
-            padding: 40px;
+            padding: 0 100px;
             background: #f5f6fa;
             transition: 0.3s;
             margin-left: 0px;
@@ -160,6 +228,32 @@
 </head>
 
 <body>
+    <div class="main-header">
+
+        <img src="/static/collage_logo_mordern.png" class="logo">
+
+        <div class="header-text">
+
+            <div class="line">
+                <h1>Government Polytechnic, Nagpur</h1>
+                <span class="sub-text">(An Autonomous Institute of Government of Maharashtra)</span>
+            </div>
+
+            <div class="line">
+                <h2>शासकीय तंत्रनिकेतन, नागपूर</h2>
+                <span class="sub-text">(महाराष्ट्र शासनाची स्वायत्त संस्था)</span>
+            </div>
+
+            <h4>welcome To</h4>
+            <h3>Digital Evaluation System</h3>
+
+            <div class="user-info">
+                Logged in as: {{ session.get('role') }}
+            </div>
+
+        </div>
+
+    </div>
 
     <!-- MENU BUTTON -->
 
@@ -167,69 +261,74 @@
 
     {% if session.get('role') == 'admin' %}
 
-    <div id="sidebar" class="sidebar">
-
-        <h3>Admin Panel</h3>
-
-        <a href="/admin_dashboard">Dashboard</a>
-        <a href="/view_users">Manage Users</a>
-        <a href="/view_students">Students</a>
-        <a href="/view_courses">Courses</a>
-        <a href="/view_exams">Exams</a>
-        <a href="/upload_question">Upload Question Paper</a>
-        <a href="/upload_model_answer">Upload Model Answer</a>
-        <a href="/results_dashboard">Results Analytics</a>
-        <a href="/logout">Logout</a>
-
-    </div>
-
-    <div id="content" class="content">
-
-        {% elif session.get('role') == 'faculty' %}
-
+    <div class="main-container">
         <div id="sidebar" class="sidebar">
+            <h3>Admin Panel</h3>
 
-            <h3>Faculty Panel</h3>
-
-            <a href="/faculty_dashboard">Dashboard</a>
-            <a href="/view_student_answers">Evaluate Answers</a>
+            <a href="/admin_dashboard">Dashboard</a>
+            <a href="/view_users">Manage Users</a>
+            <a href="/view_students">Students</a>
+            <a href="/view_courses">Courses</a>
+            <a href="/view_exams">Exams</a>
+            <a href="/upload_question">Upload Question Paper</a>
+            <a href="/upload_model_answer">Upload Model Answer</a>
+            <a href="/results_dashboard">Results Analytics</a>
             <a href="/logout">Logout</a>
 
         </div>
 
         <div id="content" class="content">
 
-            {% elif session.get('role') == 'invigilator' %}
+            {% elif session.get('role') == 'faculty' %}
 
             <div id="sidebar" class="sidebar">
 
-                <h3>Invigilator Panel</h3>
+                <h3>Faculty Panel</h3>
 
-                <a href="/invigilator_dashboard">Dashboard</a>
-                <a href="/upload_answer">Upload Student Answers</a>
+                <a href="/faculty_dashboard">Dashboard</a>
+                <a href="/view_student_answers">Evaluate Answers</a>
                 <a href="/logout">Logout</a>
 
             </div>
 
             <div id="content" class="content">
 
-                {% else %}
+                {% elif session.get('role') == 'invigilator' %}
+
+                <div id="sidebar" class="sidebar">
+
+                    <h3>Invigilator Panel</h3>
+
+                    <a href="/invigilator_dashboard">Dashboard</a>
+                    <a href="/upload_answer">Upload Student Answers</a>
+                    <a href="/logout">Logout</a>
+
+                </div>
 
                 <div id="content" class="content">
 
-                    {% endif %}
+                    {% else %}
 
-                    {% block content %}
-                    {% endblock %}
+                    <div id="content" class="content">
 
+                        {% endif %}
+
+                        {% block content %}
+                        {% endblock %}
+
+                    </div>
                 </div>
+
+
+
 
                 <script>
 
                     function toggleSidebar() {
 
-                        let sidebar = document.getElementById("sidebar");
                         let content = document.getElementById("content");
+                        let sidebar = document.getElementById("sidebar");
+
 
                         if (sidebar) {
                             sidebar.classList.toggle("hidden");
