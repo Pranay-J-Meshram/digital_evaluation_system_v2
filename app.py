@@ -71,7 +71,7 @@ def home():
         conn.close()
 
         if user:
-
+            session["user_id"] = user["id"]   # ✅ IMPORTANT
             session["user"] = user["username"]
             session["role"] = user["role"]
 
@@ -132,22 +132,62 @@ def admin_dashboard():
     )
 
 
-@app.route('/faculty_dashboard')
-@faculty_required
+@app.route("/faculty_dashboard")
 def faculty_dashboard():
-     if "role" not in session or session["role"] != "faculty":
+
+    if session.get("role") != "faculty":
         return redirect("/")
-     return render_template("faculty/faculty_dashboard.html")
-    
+
+    conn = get_db_connection()
+
+    total = conn.execute("SELECT COUNT(*) FROM student_answers").fetchone()[0]
+
+    evaluated = conn.execute(
+        "SELECT COUNT(*) FROM evaluation WHERE evaluator_id=?",
+        (session.get("user_id"),)
+    ).fetchone()[0]
+
+    pending = total - evaluated
+
+    conn.close()
+
+    return render_template(
+        "faculty/faculty_dashboard.html",
+        total=total,
+        evaluated=evaluated,
+        pending=pending
+    )
 
 
-@app.route('/invigilator_dashboard')
+@app.route("/invigilator_dashboard")
 @invigilator_required
 def invigilator_dashboard():
-     if "role" not in session or session["role"] != "invigilator":
+
+    if session.get("role") != "invigilator":
         return redirect("/")
-     return render_template("invigilator/invigilator_dashboard.html")
-     
+
+    conn = get_db_connection()
+
+    answers = conn.execute("""
+    SELECT 
+        student_answers.id,
+        students.roll_no,
+        students.student_name,
+        courses.course_code,
+        exams.exam_name,
+        student_answers.file_path
+    FROM student_answers
+    JOIN students ON student_answers.student_id = students.id
+    JOIN courses ON student_answers.course_id = courses.id
+    JOIN exams ON student_answers.exam_id = exams.id
+    """).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "invigilator/invigilator_dashboard.html",
+        answers=answers
+    )  
     
 @app.route("/logout")
 def logout():
@@ -389,6 +429,7 @@ def view_student_answers():
     JOIN students ON student_answers.student_id = students.id
     JOIN courses ON student_answers.course_id = courses.id
     JOIN exams ON student_answers.exam_id = exams.id
+    LEFT JOIN evaluation ON student_answers.id = evaluation.student_answer_id                       
     """).fetchall()
 
     conn.close()
@@ -398,9 +439,12 @@ def view_student_answers():
         answers=answers
     )
 
-@app.route("/evaluate/<int:answer_id>", methods=["GET","POST"])
+@app.route("/evaluate/<int:answer_id>", methods=["GET", "POST"])
 @faculty_required
 def evaluate(answer_id):
+
+    if session.get("role") != "faculty":
+        return redirect("/")
 
     conn = get_db_connection()
 
@@ -410,38 +454,27 @@ def evaluate(answer_id):
         comments = request.form["comments"]
 
         conn.execute("""
-        INSERT INTO evaluation
-        (student_answer_id,marks,comments,evaluator_id)
-        VALUES (?,?,?,?)
-        """,(answer_id,marks,comments,1))
+        INSERT INTO evaluation (student_answer_id, marks, comments, evaluator_id)
+        VALUES (?, ?, ?, ?)
+        """, (answer_id, marks, comments, session.get("user_id")))  # ✅ FIXED
 
         conn.commit()
+        conn.close()
 
         return redirect("/view_student_answers")
 
-    answer = conn.execute("""
-    SELECT
-    student_answers.file_path AS student_file,
-    model_answers.file_path AS model_file,
-    students.student_name,
-    courses.course_code,
-    exams.exam_name
+    data = conn.execute("""
+    SELECT student_answers.file_path, students.student_name
     FROM student_answers
     JOIN students ON student_answers.student_id = students.id
-    JOIN courses ON student_answers.course_id = courses.id
-    JOIN exams ON student_answers.exam_id = exams.id
-    LEFT JOIN model_answers
-    ON student_answers.course_id = model_answers.course_id
-    AND student_answers.exam_id = model_answers.exam_id
-    WHERE student_answers.id = ?
-    """,(answer_id,)).fetchone()
+    WHERE student_answers.id=?
+    """, (answer_id,)).fetchone()
 
     conn.close()
 
     return render_template(
         "faculty/evaluate.html",
-        answer=answer,
-        answer_id=answer_id
+         data=data        
     )
 
 @app.route("/results_dashboard")
@@ -581,6 +614,11 @@ def edit_student(id):
     conn.close()
 
     return render_template("admin/edit_student.html", student=student)
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    return send_from_directory('uploads', filename)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

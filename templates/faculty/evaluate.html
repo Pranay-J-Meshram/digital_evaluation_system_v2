@@ -1,43 +1,35 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <h2>Evaluate Answer</h2>
 
-Student: {{answer['student_name']}} <br>
-Course: {{answer['course_code']}} <br>
-Exam: {{answer['exam_name']}}
+<div class="evaluation-container">
 
-<hr>
+    <!-- LEFT SIDE -->
+    <div class="answer-view">
+        <iframe src="/uploads/{{ data.file_path }}" width="100%" height="500px"></iframe>
+    </div>
 
-<h3>Student Answer</h3>
+    <!-- RIGHT SIDE -->
+    <div class="evaluation-form">
 
-<a href="/{{answer['student_file']}}" target="_blank">
-    Open Student Answer
-</a>
+        <form method="POST">
 
-<br><br>
+            <label>Marks</label>
+            <input type="number" name="marks" required>
 
-<h3>Model Answer</h3>
+            <label>Comments</label>
+            <textarea name="comments"></textarea>
 
-<a href="/{{answer['model_file']}}" target="_blank">
-    Open Model Answer
-</a>
+            <br><br>
 
-<hr>
+            <button type="submit" class="btn">Submit</button>
 
-<form method="POST">
+        </form>
 
-    Marks<br>
-    <input type="number" name="marks">
+    </div>
 
-    <br><br>
+</div>
 
-    Comments<br>
-    <textarea name="comments"></textarea>
-
-    <br><br>
-
-    <button type="submit">Submit Evaluation</button>
-
-</form>
 {% endblock %}

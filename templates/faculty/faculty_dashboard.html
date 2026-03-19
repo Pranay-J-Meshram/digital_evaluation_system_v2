@@ -1,11 +1,34 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <h2>Faculty Dashboard</h2>
 
-<p>Welcome {{ user }}</p>
+<div class="dashboard-container">
 
-<hr>
-<br><br>
+    <div class="dashboard-card total-card">
+        <div class="card-icon">📄</div>
+        <h3>Total Papers</h3>
+        <h2>{{ total }}</h2>
+    </div>
+
+
+    <div class="dashboard-card evaluated-card">
+        <div class="card-icon">✅</div>
+        <h3>Evaluated</h3>
+        <h2>{{ evaluated }}</h2>
+    </div>
+
+    <div class="dashboard-card pending-card">
+        <div class="card-icon">⏳</div>
+        <h3>Pending</h3>
+        <h2>{{ pending }}</h2>
+    </div>
+
+</div>
+
+<br>
+
+<a href="/view_student_answers" class="btn">Start Evaluation →</a>
 
 {% endblock %}
