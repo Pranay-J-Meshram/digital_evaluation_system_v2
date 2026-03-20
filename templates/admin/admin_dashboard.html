@@ -27,28 +27,69 @@
         </div>
     </a>
 
-    <a href="/upload_answer" style="text-decoration:none;color:black">
-        <div class="dashboard-card">
-            <h3>Answer Sheets</h3>
-            <h2>{{total_answers}}</h2>
-        </div>
-    </a>
+    <div class="dashboard-card">
+        <h3>Answer Sheets</h3>
+        <h2>{{total_answers}}</h2>
+    </div>
 
-    <a href="/results_dashboard" style="text-decoration:none;color:black">
-        <div class="dashboard-card">
-            <h3>Evaluated</h3>
-            <h2>{{evaluated}}</h2>
-        </div>
-    </a>
+    <div class="dashboard-card">
+        <h3>Evaluated</h3>
+        <h2>{{evaluated}}</h2>
+    </div>
 
-    <a href="/faculty_dashboard" style="text-decoration:none;color:black">
-        <div class="dashboard-card">
-            <h3>Pending Evaluation</h3>
-            <h2>{{pending}}</h2>
-        </div>
-    </a>
-
-
+    <div class="dashboard-card">
+        <h3>Pending</h3>
+        <h2>{{pending}}</h2>
+    </div>
 </div>
+
+<br><br>
+
+<!-- 🔥 NEW: EXAM ASSIGNMENTS TABLE -->
+<h3>Exam Assignments</h3>
+
+<table border="1" cellpadding="10" style="width:100%">
+
+    <tr>
+        <th>Dept</th>
+        <th>Year</th>
+        <th>Course</th>
+        <th>Exam</th>
+        <th>Status</th>
+        <th>Faculty</th>
+        <th>Action</th>
+
+    </tr>
+
+    {% for a in assignments %}
+
+    <tr>
+        <td>{{ a.department }}</td>
+        <td>{{ a.year }}</td>
+        <td>{{ a.course_name }}</td>
+        <td>{{ a.exam_name }}</td>
+
+        <td>
+            {% if a.assigned_faculty %}
+            <span style="color:green;">Assigned</span>
+            {% else %}
+            <span style="color:red;">Not Assigned</span>
+            {% endif %}
+        </td>
+
+        <td>
+            {{ a.assigned_faculty if a.assigned_faculty else "—" }}
+        </td>
+
+        <td>
+            <a href="/assign_faculty/{{ a.id }}">Assign</a>
+        </td>
+
+    </tr>
+
+    {% endfor %}
+
+</table>
+
 
 {% endblock %}

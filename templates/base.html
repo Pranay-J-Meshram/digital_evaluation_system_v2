@@ -6,6 +6,28 @@
     <title>Digital Evaluation System</title>
 
     <style>
+        /*       */
+
+        .status.done {
+            color: green;
+            font-weight: bold;
+        }
+
+        .status.pending {
+            color: red;
+            font-weight: bold;
+        }
+
+        /*    */
+
+        .dashboard-card {
+            border-radius: 10px;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /*    */
+
         .dashboard-container {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -325,25 +347,26 @@
             <a href="/view_users">Users</a>
             <a href="/view_students">Students</a>
             <a href="/view_courses">Courses</a>
+            <a href="/create_exam">Create Exam</a>
             <a href="/view_exams">Exams</a>
-            <a href="/upload_question">Question Paper</a>
-            <a href="/upload_model_answer">Model Answer</a>
             <a href="/results_dashboard">Results</a>
 
             {% elif session.get('role') == 'faculty' %}
             <h3>Faculty Panel</h3>
             <a href="/faculty_dashboard">Dashboard</a>
+            <a href="/faculty_tasks">Tasks</a>
             <a href="/view_student_answers">Evaluate</a>
 
             {% elif session.get('role') == 'invigilator' %}
             <h3>Invigilator Panel</h3>
             <a href="/invigilator_dashboard">Dashboard</a>
-            <a href="/upload_answer">Upload Answers</a>
+            <a href="/invigilator_exams">view exams</a>
             {% endif %}
 
             <a href="/logout">Logout</a>
 
         </div>
+
 
         <!-- CONTENT -->
         <div id="content" class="content">

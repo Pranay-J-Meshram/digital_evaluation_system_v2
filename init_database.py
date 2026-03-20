@@ -90,6 +90,35 @@ evaluator_id INTEGER
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS exam_assignments (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+department TEXT,
+year TEXT,
+course_id INTEGER,
+exam_id INTEGER,
+status TEXT DEFAULT 'created',
+assigned_faculty INTEGER
+)
+""")
+
+# 🟢 STEP 1: SAFE COLUMN ADD FUNCTION
+
+def add_column_if_not_exists(cursor, table, column_def):
+    try:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+
+# 🟢 STEP 2: APPLY TO ALL TABLES
+
+# ✅ ADD assignment_id SAFELY
+
+add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
+add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
+add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
+
 # ---------------------------------------------------
 # DEFAULT USERS
 # ---------------------------------------------------
@@ -140,4 +169,4 @@ cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Mechanic
 conn.commit()
 conn.close()
 
-print("Database created successfully with NEW sample data")
+print("Database created successfully with A NEW sample data")

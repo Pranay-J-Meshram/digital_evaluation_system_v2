@@ -1,26 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Upload Student Answer</h2>
+<h2>Upload Model Answer</h2>
 
 <form method="POST" enctype="multipart/form-data">
 
     <!-- Hidden Assignment ID -->
     <input type="hidden" name="assignment_id" value="{{ assignment_id }}">
 
-    <label>Select Student</label><br><br>
-
-    <select name="student_id" required>
-        {% for s in students %}
-        <option value="{{s['id']}}">
-            {{s['roll_no']}} - {{s['student_name']}}
-        </option>
-        {% endfor %}
-    </select>
-
-    <br><br>
-
-    <label>Upload Answer Sheet</label><br><br>
+    <label>Upload Model Answer File</label><br><br>
     <input type="file" name="file" required>
 
     <br><br>

@@ -32,7 +32,11 @@
         </td>
 
         <td>
+            {% if not a.marks %}
             <a href="/evaluate/{{ a.id }}" class="btn">Evaluate</a>
+            {% else %}
+            <span style="color:green;">✔ Done</span>
+            {% endif %}
         </td>
 
     </tr>
@@ -40,5 +44,9 @@
     {% endfor %}
 
 </table>
+
+<br>
+
+<a href="/faculty_tasks">⬅ Back to Tasks</a>
 
 {% endblock %}
