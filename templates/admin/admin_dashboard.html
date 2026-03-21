@@ -33,9 +33,9 @@
 <br><br>
 
 <!-- 🔥 NEW: EXAM ASSIGNMENTS TABLE -->
-<h3>Exam Assignments</h3>
+<h3>Exam Management</h3>
 
-<table border="1" cellpadding="10" style="width:100%">
+<table class="table">
 
     <tr>
         <th>Dept</th>
@@ -45,57 +45,54 @@
         <th>Status</th>
         <th>Faculty</th>
         <th>Action</th>
+    </tr>
+
+    {% for exam in assignments %}
+
+    <tr>
+        <td>{{ exam.department }}</td>
+        <td>{{ exam.year }}</td>
+        <td>{{ exam.course_name }}</td>
+        <td>{{ exam.exam_name }}</td>
+
+        <!-- STATUS -->
+        <td>
+            {% if exam.assigned_faculty %}
+            <span style="color:green;">Assigned</span>
+            {% else %}
+            <span style="color:red;">Not Assigned</span>
+            {% endif %}
+        </td>
+
+        <!-- FACULTY -->
+        <td>
+            {% if exam.username %}
+            {{ exam.username }}
+            {% else %}
+            —
+            {% endif %}
+        </td>
+
+        <!-- ACTION -->
+        <td>
+
+            <!-- ASSIGN BUTTON -->
+            <a href="/assign_faculty/{{ exam.id }}">Assign</a>
+
+            |
+
+            <!-- DELETE BUTTON -->
+            <a href="/delete_exam/{{ exam.id }}" onclick="return confirm('Are you sure?')" style="color:red;">
+                Delete
+            </a>
+
+        </td>
 
     </tr>
 
-    <table class="table">
+    {% endfor %}
 
-        {% for exam in assignments %}
-
-        <tr>
-            <td>{{ exam.department }}</td>
-            <td>{{ exam.year }}</td>
-            <td>{{ exam.course_name }}</td>
-            <td>{{ exam.exam_name }}</td>
-
-            <!-- STATUS -->
-            <td>
-                {% if exam.assigned_faculty %}
-                <span style="color:green;">Assigned</span>
-                {% else %}
-                <span style="color:red;">Not Assigned</span>
-                {% endif %}
-            </td>
-
-            <!-- FACULTY -->
-            <td>
-                {% if exam.username %}
-                {{ exam.username }}
-                {% else %}
-                —
-                {% endif %}
-            </td>
-
-            <!-- ACTION -->
-            <td>
-
-                <!-- ASSIGN BUTTON -->
-                <a href="/assign_faculty/{{ exam.id }}">Assign</a>
-
-                |
-
-                <!-- DELETE BUTTON -->
-                <a href="/delete_exam/{{ exam.id }}" onclick="return confirm('Are you sure?')" style="color:red;">
-                    Delete
-                </a>
-
-            </td>
-
-        </tr>
-
-        {% endfor %}
-
-    </table>
+</table>
 
 
-    {% endblock %}
+{% endblock %}

@@ -48,17 +48,8 @@
 
 <script>
 
-    const labels = [
-        {% for r in results %}
-    "{{ r['roll_no'] }}",
-        {% endfor %}
-];
-
-    const marks = [
-        {% for r in results %}
-    { { r['marks'] } },
-    {% endfor %}
-];
+    const labels = {{ results | map(attribute = 'roll_no') | list | tojson }};
+    const marks = {{ results | map(attribute = 'marks') | list | tojson }};
 
     new Chart(document.getElementById("marksChart"), {
         type: "bar",

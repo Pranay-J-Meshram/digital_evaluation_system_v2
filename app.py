@@ -225,11 +225,17 @@ def invigilator_dashboard():
         "invigilator/invigilator_dashboard.html",
         answers=answers
     )  
-    
+
+
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
+
+
+
 
 
 @app.route("/view_students", methods=["GET", "POST"])
