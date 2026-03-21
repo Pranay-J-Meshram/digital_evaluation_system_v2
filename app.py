@@ -111,14 +111,6 @@ def admin_dashboard():
     cursor.execute("SELECT COUNT(*) as total_exams FROM exams")
     total_exams = cursor.fetchone()["total_exams"]
 
-    cursor.execute("SELECT COUNT(*) as total_answers FROM student_answers")
-    total_answers = cursor.fetchone()["total_answers"]
-
-    cursor.execute("SELECT COUNT(*) as evaluated FROM evaluation")
-    evaluated = cursor.fetchone()["evaluated"]
-
-    pending = total_answers - evaluated
-
      # ----------------------------
     # NEW: EXAM ASSIGNMENTS
     # ----------------------------
@@ -138,9 +130,6 @@ def admin_dashboard():
         total_students=total_students,
         total_courses=total_courses,
         total_exams=total_exams,
-        total_answers=total_answers,
-        evaluated=evaluated,
-        pending=pending,
         assignments=assignments
         
     )
@@ -151,16 +140,47 @@ def faculty_dashboard():
     if session.get("role") != "faculty":
         return redirect("/")
 
+    assignment_id = request.args.get("assignment_id")
+
     conn = get_db_connection()
 
-    total = conn.execute("SELECT COUNT(*) FROM student_answers").fetchone()[0]
+    # ✅ GET ALL ASSIGNMENTS (ALWAYS REQUIRED FOR DROPDOWN)
+    assignments = conn.execute("""
+        SELECT ea.id, ea.year, ea.department,
+               c.course_name, e.exam_name
+        FROM exam_assignments ea
+        JOIN courses c ON ea.course_id = c.id
+        JOIN exams e ON ea.exam_id = e.id
+        WHERE ea.assigned_faculty = ?
+    """, (session.get("user_id"),)).fetchall()
 
-    evaluated = conn.execute(
-        "SELECT COUNT(*) FROM evaluation WHERE evaluator_id=?",
-        (session.get("user_id"),)
-    ).fetchone()[0]
+    if assignment_id:
+        # ✅ FILTERED DATA
 
-    
+        total = conn.execute(
+            "SELECT COUNT(*) FROM student_answers WHERE assignment_id=?",
+            (assignment_id,)
+        ).fetchone()[0]
+
+        evaluated = conn.execute("""
+            SELECT COUNT(*)
+            FROM evaluation ev
+            JOIN student_answers sa
+            ON ev.student_answer_id = sa.id
+            WHERE sa.assignment_id=? AND ev.evaluator_id=?
+        """, (assignment_id, session.get("user_id"))).fetchone()[0]
+
+    else:
+        # ✅ ALL DATA
+
+        total = conn.execute(
+            "SELECT COUNT(*) FROM student_answers"
+        ).fetchone()[0]
+
+        evaluated = conn.execute(
+            "SELECT COUNT(*) FROM evaluation WHERE evaluator_id=?",
+            (session.get("user_id"),)
+        ).fetchone()[0]
 
     pending = total - evaluated
 
@@ -170,7 +190,9 @@ def faculty_dashboard():
         "faculty/faculty_dashboard.html",
         total=total,
         evaluated=evaluated,
-        pending=pending
+        pending=pending,
+        assignments=assignments,   # ✅ IMPORTANT
+        assignment_id=assignment_id
     )
 
 
@@ -773,6 +795,25 @@ def faculty_tasks():
     conn.close()
 
     return render_template("faculty/tasks.html", tasks=tasks)
+
+@app.route("/delete_exam/<int:id>")
+@admin_required
+def delete_exam(id):
+
+    conn = get_db_connection()
+
+    # ❗ First delete dependent data (IMPORTANT)
+    conn.execute("DELETE FROM student_answers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM question_papers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM model_answers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM exam_assignments WHERE id=?", (id,))
+
+    conn.commit()
+    conn.close()
+
+    flash("❌ Exam deleted successfully!", "success")
+
+    return redirect("/admin_dashboard")
 
 if __name__ == "__main__":
     app.run(debug=True)
