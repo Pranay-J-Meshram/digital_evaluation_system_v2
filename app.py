@@ -1,138 +1,124 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
-import sqlite3
-from config import Config
-import os
-from functools import wraps
-from flask import session, redirect, url_for
+from flask import Flask, render_template, request, redirect, session,send_from_directory, url_for
+import sqlite3, os
 import pandas as pd
+import csv
 from flask import flash
 
+
 app = Flask(__name__)
-app.config.from_object(Config)
+app.secret_key = "secret123"
 
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-
-        if 'role' not in session or session['role'] != 'admin':
-            return redirect(url_for('login'))
-
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def faculty_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-
-        if 'role' not in session or session['role'] != 'faculty':
-            return redirect(url_for('login'))
-
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def invigilator_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-
-        if 'role' not in session or session['role'] != 'invigilator':
-            return redirect(url_for('login'))
-
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
+# ================= DB CONNECTION =================
 def get_db_connection():
-    conn = sqlite3.connect(app.config["DATABASE"])
+    conn = sqlite3.connect("database.db", timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
+# ================= LOG SYSTEM =================
+def log_activity(conn, user_id, action, details):
+    conn.execute("""
+        INSERT INTO activity_logs (user_id, action, details)
+        VALUES (?, ?, ?)
+    """, (user_id, action, details))
 
+# ================= AUTH DECORATORS =================
+def admin_required(f):
+    def wrapper(*args, **kwargs):
+        if session.get("role") != "admin":
+            return redirect("/")
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
+def faculty_required(f):
+    def wrapper(*args, **kwargs):
+        if session.get("role") != "faculty":
+            return redirect("/")
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
+def invigilator_required(f):
+    def wrapper(*args, **kwargs):
+        if session.get("role") != "invigilator":
+            return redirect("/")
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
+# ================= LOGIN =================
 @app.route("/", methods=["GET","POST"])
-def home():
-
+def login():
     if request.method == "POST":
-
         username = request.form["username"]
         password = request.form["password"]
 
         conn = get_db_connection()
-
         user = conn.execute(
             "SELECT * FROM users WHERE username=? AND password=?",
-            (username,password)
+            (username, password)
         ).fetchone()
 
         conn.close()
 
         if user:
-            session["user_id"] = user["id"]   # ✅ IMPORTANT
-            session["user"] = user["username"]
+            session["user_id"] = user["id"]
             session["role"] = user["role"]
 
             if user["role"] == "admin":
                 return redirect("/admin_dashboard")
-
-            if user["role"] == "faculty":
+            elif user["role"] == "faculty":
                 return redirect("/faculty_dashboard")
-
-            if user["role"] == "invigilator":
+            else:
                 return redirect("/invigilator_dashboard")
-
-        else:
-            return "Invalid Credentials"
 
     return render_template("login.html")
 
-
-@app.route('/admin_dashboard')
+# ================= ADMIN DASHBOARD =================
+@app.route("/admin_dashboard")
 @admin_required
 def admin_dashboard():
 
-    if 'role' not in session or session['role'] != 'admin':
-        return redirect(url_for('login'))
+    conn = get_db_connection()
 
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    total_students = conn.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+    total_courses = conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
+    total_exams = conn.execute("SELECT COUNT(*) FROM exams").fetchone()[0]
+    total_answers = conn.execute("SELECT COUNT(*) FROM student_answers").fetchone()[0]
+    evaluated = conn.execute("SELECT COUNT(*) FROM evaluation").fetchone()[0]
+    pending = total_answers - evaluated
 
-    # statistics queries
-    cursor.execute("SELECT COUNT(*) as total_students FROM students")
-    total_students = cursor.fetchone()["total_students"]
-
-    cursor.execute("SELECT COUNT(*) as total_courses FROM courses")
-    total_courses = cursor.fetchone()["total_courses"]
-
-    cursor.execute("SELECT COUNT(*) as total_exams FROM exams")
-    total_exams = cursor.fetchone()["total_exams"]
-
-     # ----------------------------
-    # NEW: EXAM ASSIGNMENTS
-    # ----------------------------
-    cursor.execute("""
-    SELECT ea.*, c.course_name, e.exam_name, u.username
-    FROM exam_assignments ea
-    JOIN courses c ON ea.course_id = c.id
-    JOIN exams e ON ea.exam_id = e.id
-    LEFT JOIN users u ON ea.assigned_faculty = u.id
-    """)
-    assignments = cursor.fetchall()
+    assignments = conn.execute("""
+        SELECT ea.*, c.course_name, e.exam_name, u.username
+        FROM exam_assignments ea
+        JOIN courses c ON ea.course_id = c.id
+        JOIN exams e ON ea.exam_id = e.id
+        LEFT JOIN users u ON ea.assigned_faculty = u.id
+    """).fetchall()
+    logs = conn.execute("""
+        SELECT activity_logs.*, users.username
+        FROM activity_logs
+        JOIN users ON activity_logs.user_id = users.id
+        ORDER BY timestamp DESC
+        LIMIT 10
+        """).fetchall()
 
     conn.close()
 
-    return render_template(
-        "admin/admin_dashboard.html",
+    return render_template("admin/admin_dashboard.html",
         total_students=total_students,
         total_courses=total_courses,
         total_exams=total_exams,
-        assignments=assignments
+        total_answers=total_answers,
+        evaluated=evaluated,
+        pending=pending,
+        assignments=assignments,
+        logs=logs
         
+
     )
+
+# ================= FACULTY DASHBOARD =================
 
 @app.route("/faculty_dashboard")
 def faculty_dashboard():
@@ -194,14 +180,11 @@ def faculty_dashboard():
         assignments=assignments,   # ✅ IMPORTANT
         assignment_id=assignment_id
     )
-
+# ================= INVIGILATOR DASHBOARD =================
 
 @app.route("/invigilator_dashboard")
 @invigilator_required
 def invigilator_dashboard():
-
-    if session.get("role") != "invigilator":
-        return redirect("/")
 
     conn = get_db_connection()
 
@@ -224,25 +207,26 @@ def invigilator_dashboard():
     return render_template(
         "invigilator/invigilator_dashboard.html",
         answers=answers
-    )  
+    ) 
+#=================viwe usres ==================
+
+@app.route("/view_users")
+@admin_required
+def view_users():
 
 
+    conn = get_db_connection()
 
+    users = conn.execute("SELECT * FROM users").fetchall()
 
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/")
+    conn.close()
 
+    return render_template("admin/view_users.html", users=users)
 
-
-
+#================= view students ================
 
 @app.route("/view_students", methods=["GET", "POST"])
 def view_students():
-
-    if session.get("role") != "admin":
-        return redirect("/login")
 
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
@@ -282,6 +266,62 @@ def view_students():
         departments=departments,
         students=students
     )
+#===================  edit student ================
+
+@app.route("/edit_student/<int:id>", methods=["GET","POST"])
+@admin_required
+def edit_student(id):
+
+    conn = get_db_connection()
+
+    if request.method == "POST":
+
+        
+        name = request.form["student_name"]
+        dept = request.form["department"]
+        year = request.form["year"]
+
+        conn.execute("""
+        UPDATE students
+        SET student_name=?, department=?, year=?
+        WHERE id=?
+        """, (name, dept, year, id))
+
+        log_activity(conn, session["user_id"], "Edit Student", f"{name} -> {dept} -> {year}")
+
+        flash("Exam created successfully!", "success")
+
+        conn.commit()
+        conn.close()
+
+        return redirect("/view_students")
+
+    student = conn.execute(
+        "SELECT * FROM students WHERE id=?", (id,)
+    ).fetchone()
+
+    conn.close()
+
+    return render_template("admin/edit_student.html", student=student)
+
+#====================== delete student ============================
+
+@app.route("/delete_student/<int:id>")
+@admin_required
+def delete_student(id):
+
+    conn = get_db_connection()
+
+    conn.execute("DELETE FROM students WHERE id=?", (id,))
+
+    log_activity(conn, session["user_id"], "Delete Student", f"ID {id}")
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/view_students")
+
+#================= view exams ===================
 
 @app.route("/view_exams")
 @admin_required
@@ -300,27 +340,11 @@ def view_exams():
         exams=exams
     )
 
-@app.route("/view_users")
-@admin_required
-def view_users():
-
-    if "user" not in session or session["role"] != "admin":
-        return redirect(url_for("home"))
-
-    conn = get_db_connection()
-
-    users = conn.execute("SELECT * FROM users").fetchall()
-
-    conn.close()
-
-    return render_template("admin/view_users.html", users=users)
+#============== view course ===========
 
 @app.route("/view_courses")
 @admin_required
 def view_subjects():
-
-    if "user" not in session or session["role"] != "admin":
-        return redirect(url_for("home"))
 
     conn = get_db_connection()
 
@@ -330,49 +354,175 @@ def view_subjects():
 
     return render_template("admin/view_courses.html", courses=courses)
 
+# ================= CREATE EXAM =================
 
-@app.route("/upload_question", methods=["GET","POST"])
-@invigilator_required   # 🔥 changed from faculty → invigilator (as per flow)
+@app.route("/create_exam", methods=["GET","POST"])
+@admin_required
+def create_exam():
+
+    conn = get_db_connection()
+
+    departments = conn.execute("SELECT DISTINCT department FROM students").fetchall()
+    courses = conn.execute("SELECT * FROM courses").fetchall()
+    exams = conn.execute("SELECT * FROM exams").fetchall()
+
+    if request.method == "POST":
+
+        department = request.form["department"]
+        year = request.form["year"]
+        course_id = request.form["course"]
+        exam_id = request.form["exam"]
+
+        conn.execute("""
+        INSERT INTO exam_assignments (department, year, course_id, exam_id)
+        VALUES (?, ?, ?, ?)
+        """, (department, year, course_id, exam_id))
+        
+
+        log_activity(conn, session["user_id"], "Create Exam",
+                     f"{department} Year {year}")
+        
+        
+
+        conn.commit()
+        conn.close()
+        
+        return redirect("/admin_dashboard")
+
+    conn.close()
+    return render_template("admin/create_exam.html",
+                           departments=departments,
+                           courses=courses,
+                           exams=exams)
+
+# ================= DELETE EXAM =================
+
+@app.route("/delete_exam/<int:id>")
+@admin_required
+def delete_exam(id):
+
+    conn = get_db_connection()
+
+    conn.execute("DELETE FROM exam_assignments WHERE id=?", (id,))
+
+    log_activity(conn, session["user_id"], "Delete Exam", f"ID {id}")
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin_dashboard")
+
+# ================= ASSIGN FACULTY =================
+
+@app.route("/assign_faculty/<int:id>", methods=["GET","POST"])
+@admin_required
+def assign_faculty(id):
+
+    conn = get_db_connection()
+
+    # Get faculty users
+    faculty = conn.execute("""
+    SELECT * FROM users WHERE role='faculty'
+    """).fetchall()
+
+    if request.method == "POST":
+
+        faculty_id = request.form["faculty"]
+
+        conn.execute("""
+        UPDATE exam_assignments
+        SET assigned_faculty=?, status='assigned'
+        WHERE id=?
+        """, (faculty_id, id))
+
+        log_activity(conn, session["user_id"],
+                 "Assign Faculty",
+                 f"Faculty {faculty_id} → Assignment {id}")
+
+
+        conn.commit()
+
+        return redirect("/admin_dashboard")
+
+    conn.close()
+
+    return render_template(
+        "admin/assign_faculty.html",
+        faculty=faculty,
+        assignment_id=id
+    )
+
+#======================= faculty taske ===========================
+
+@app.route("/faculty_tasks")
+@faculty_required
+def faculty_tasks():
+
+    conn = get_db_connection()
+
+    tasks = conn.execute("""
+    SELECT ea.*, c.course_name, e.exam_name
+    FROM exam_assignments ea
+    JOIN courses c ON ea.course_id = c.id
+    JOIN exams e ON ea.exam_id = e.id
+    WHERE ea.assigned_faculty = ?
+    """, (session["user_id"],)).fetchall()
+
+    conn.close()
+
+    return render_template("faculty/tasks.html", tasks=tasks)
+
+#========================= invigilator exam =================================
+
+@app.route("/invigilator_exams")
+@invigilator_required
+def invigilator_exams():
+
+    conn = get_db_connection()
+
+    exams = conn.execute("""
+    SELECT ea.*, c.course_name, e.exam_name
+    FROM exam_assignments ea
+    JOIN courses c ON ea.course_id = c.id
+    JOIN exams e ON ea.exam_id = e.id
+    """).fetchall()
+
+    conn.close()
+
+    return render_template("invigilator/exams.html", exams=exams)
+
+# ================= UPLOAD QUESTION =================
+@app.route("/upload_question", methods=["GET", "POST"])
+@invigilator_required
 def upload_question():
 
     conn = get_db_connection()
 
     assignment_id = request.args.get("assignment_id")
 
-    assignment = conn.execute("""
-    SELECT * FROM exam_assignments WHERE id=?
-    """, (assignment_id,)).fetchone()
-
-    if not assignment:
-        return "Invalid Assignment ID"
-
     if request.method == "POST":
 
+        assignment_id = request.form["assignment_id"]
         file = request.files["file"]
 
-        if file:
+        folder = "uploads/question_papers"
+        os.makedirs(folder, exist_ok=True)
 
-            folder = "uploads/question_papers"
-            os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, file.filename)
+        file.save(path)
 
-            filepath = os.path.join(folder, file.filename)
-            file.save(filepath)
+        conn.execute("""
+        INSERT INTO question_papers (file_path, assignment_id)
+        VALUES (?, ?)
+        """, (path, assignment_id))
 
-            assignment_id = request.args.get("assignment_id")
-            conn.execute("""
-            INSERT INTO question_papers
-            (course_id, exam_id, file_path, assignment_id)
-            VALUES ( ?, ?, ?, ?)
-            """, (
-                assignment["course_id"],
-                assignment["exam_id"],
-                filepath,
-                assignment_id
-            ))
+        log_activity(conn, session["user_id"],
+                     "Upload Question", f"Assignment {assignment_id}")
 
-            conn.commit()
+        conn.commit()
+        conn.close()
 
-            return redirect("/invigilator_exams")
+        return redirect("/invigilator_dashboard")
 
     conn.close()
 
@@ -380,8 +530,9 @@ def upload_question():
         "invigilator/upload_question.html",
         assignment_id=assignment_id
     )
+# ================= UPLOAD MODEL ANSWER =================
 
-@app.route("/upload_model_answer", methods=["GET","POST"])
+@app.route("/upload_model_answer", methods=["GET", "POST"])
 @invigilator_required
 def upload_model_answer():
 
@@ -389,40 +540,29 @@ def upload_model_answer():
 
     assignment_id = request.args.get("assignment_id")
 
-    assignment = conn.execute("""
-    SELECT * FROM exam_assignments WHERE id=?
-    """, (assignment_id,)).fetchone()
-
-    if not assignment:
-        return "Invalid Assignment ID"
-
     if request.method == "POST":
 
+        assignment_id = request.form["assignment_id"]
         file = request.files["file"]
 
-        if file:
+        folder = "uploads/model_answers"
+        os.makedirs(folder, exist_ok=True)
 
-            folder = "uploads/model_answers"
-            os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, file.filename)
+        file.save(path)
 
-            filepath = os.path.join(folder, file.filename)
-            file.save(filepath)
-            
-            assignment_id = request.args.get("assignment_id")
-            conn.execute("""
-            INSERT INTO model_answers
-            (course_id, exam_id, file_path, assignment_id)
-            VALUES ( ?, ?, ?, ?)
-            """, (
-                assignment["course_id"],
-                assignment["exam_id"],
-                filepath,
-                assignment_id
-            ))
+        conn.execute("""
+        INSERT INTO model_answers (file_path, assignment_id)
+        VALUES (?, ?)
+        """, (path, assignment_id))
 
-            conn.commit()
+        log_activity(conn, session["user_id"],
+                     "Upload Model Answer", f"Assignment {assignment_id}")
 
-            return redirect("/invigilator_exams")
+        conn.commit()
+        conn.close()
+
+        return redirect("/invigilator_dashboard")
 
     conn.close()
 
@@ -430,8 +570,9 @@ def upload_model_answer():
         "invigilator/upload_model_answer.html",
         assignment_id=assignment_id
     )
+# ================= UPLOAD STUDENT ANSWERS =================
 
-@app.route("/upload_answer", methods=["GET","POST"])
+@app.route("/upload_answer", methods=["GET", "POST"])
 @invigilator_required
 def upload_answer():
 
@@ -439,87 +580,111 @@ def upload_answer():
 
     assignment_id = request.args.get("assignment_id")
 
-    assignment = conn.execute("""
-    SELECT * FROM exam_assignments WHERE id=?
-    """, (assignment_id,)).fetchone()
-
-    if not assignment:
-        return "Invalid Assignment ID"
+    students = conn.execute("SELECT * FROM students").fetchall()
 
     if request.method == "POST":
-
+        exam_id = request.files["exam_id"]
+        course_id = request.form["course_id"]
+        assignment_id = request.form["assignment_id"]
         student_id = request.form["student_id"]
         file = request.files["file"]
 
-        if file:
+        folder = "uploads/student_answers"
+        os.makedirs(folder, exist_ok=True)
 
-            folder = "uploads/student_answers"
-            os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, file.filename)
+        file.save(path)
 
-            filepath = os.path.join(folder, file.filename)
-            file.save(filepath)
-
-            conn.execute("""
-            INSERT INTO student_answers
-            (student_id, course_id, exam_id, file_path, assignment_id)
+        conn.execute("""
+        (student_id, course_id, exam_id, file_path, assignment_id)
             VALUES (?, ?, ?, ?, ?)
-            """, (
-                student_id,
-                assignment["course_id"],
-                assignment["exam_id"],
-                filepath,
-                assignment_id
-            ))
+        """, (student_id,course_id,exam_id, path, assignment_id))
 
-            conn.commit()
+        log_activity(conn, session["user_id"],
+                     "Upload Answer",
+                     f"Student {student_id} Assignment {assignment_id}")
 
-    # ✅ FILTERED STUDENTS (IMPORTANT)
-    students = conn.execute("""
-    SELECT * FROM students
-    WHERE department=? AND year=?
-    """, (assignment["department"], assignment["year"])).fetchall()
+        conn.commit()
+        conn.close()
+
+        return redirect("/invigilator_dashboard")
 
     conn.close()
 
     return render_template(
         "invigilator/upload_answer.html",
-        students=students,
-        assignment_id=assignment_id
+        assignment_id=assignment_id,
+        students=students
     )
+#=============== manage exam ===========
+
+@app.route("/manage_exam/<int:id>")
+@invigilator_required
+def manage_exam(id):
+
+    return render_template("invigilator/manage_exam.html", id=id)
+
+#=============== manage uploads =======
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    return send_from_directory('uploads', filename)
+
+
+#=============== result ===============================
+
+@app.route("/results_dashboard")
+@admin_required
+def results_dashboard():
+
+    conn = get_db_connection()
+
+    results = conn.execute("""
+    SELECT
+    students.roll_no,
+    students.student_name,
+    courses.course_code,
+    exams.exam_name,
+    evaluation.marks
+    FROM evaluation
+    JOIN student_answers ON evaluation.student_answer_id = student_answers.id
+    JOIN students ON student_answers.student_id = students.id
+    JOIN courses ON student_answers.course_id = courses.id
+    JOIN exams ON student_answers.exam_id = exams.id
+    """).fetchall()
+
+    conn.close()
+
+    return render_template("admin/results_dashboard.html", results=results)
+
+
+# ================= VIEW ANSWERS =================
 
 @app.route("/view_student_answers")
 @faculty_required
-def view_student_answers():
+def view_answers():
 
     assignment_id = request.args.get("assignment_id")
 
     conn = get_db_connection()
 
     answers = conn.execute("""
-    SELECT
-        sa.id,
-        s.roll_no,
-        s.student_name,
-        c.course_code,
-        e.exam_name,
-        sa.file_path,
-        ev.marks
+    SELECT sa.id, s.roll_no, s.student_name,
+           sa.file_path, ev.marks
     FROM student_answers sa
     JOIN students s ON sa.student_id = s.id
-    JOIN courses c ON sa.course_id = c.id
-    JOIN exams e ON sa.exam_id = e.id
-    LEFT JOIN evaluation ev 
-        ON sa.id = ev.student_answer_id
-    WHERE sa.assignment_id = ?
+    LEFT JOIN evaluation ev
+    ON sa.id = ev.student_answer_id
+    WHERE sa.assignment_id=?
     """, (assignment_id,)).fetchall()
 
     conn.close()
 
-    return render_template(
-        "faculty/view_student_answers.html",
-        answers=answers,
-        assignment_id=assignment_id
-    )
+    return render_template("faculty/view_student_answers.html",
+                           answers=answers,
+                           assignment_id=assignment_id)
+
+# ================= EVALUATE =================
 
 @app.route("/evaluate/<int:answer_id>", methods=["GET", "POST"])
 @faculty_required
@@ -553,6 +718,11 @@ def evaluate(answer_id):
             INSERT INTO evaluation (student_answer_id, marks, comments, evaluator_id)
             VALUES (?, ?, ?, ?)
             """, (answer_id, marks, comments, session["user_id"]))
+            
+            log_activity(conn, session["user_id"],
+                 "Evaluate Answer",
+                 f"Answer ID {id}, Marks {marks}")
+
 
         conn.commit()
         conn.close()
@@ -574,252 +744,38 @@ def evaluate(answer_id):
         data=data
     )
 
-@app.route("/results_dashboard")
-@admin_required
-def results_dashboard():
-
-    conn = get_db_connection()
-
-    results = conn.execute("""
-    SELECT
-    students.roll_no,
-    students.student_name,
-    courses.course_code,
-    exams.exam_name,
-    evaluation.marks
-    FROM evaluation
-    JOIN student_answers ON evaluation.student_answer_id = student_answers.id
-    JOIN students ON student_answers.student_id = students.id
-    JOIN courses ON student_answers.course_id = courses.id
-    JOIN exams ON student_answers.exam_id = exams.id
-    """).fetchall()
-
-    conn.close()
-
-    return render_template(
-        "admin/results_dashboard.html",
-        results=results
-    )
+#===============bulk upload =============
 
 @app.route("/bulk_upload_students", methods=["POST"])
+@admin_required
 def bulk_upload_students():
-
-    if session.get("role") != "admin":
-        return redirect("/login")
 
     file = request.files["file"]
 
-    if file:
-
-        df = pd.read_excel(file)
-
-        conn = sqlite3.connect("database.db")
-        cursor = conn.cursor()
-
-        for index, row in df.iterrows():
-
-            cursor.execute("""
-            INSERT OR IGNORE INTO students
-            (roll_no, student_name, department, year)
-            VALUES (?, ?, ?, ?)
-            """, (
-                row["roll_no"],
-                row["student_name"],
-                row["department"],
-                str(row["year"])
-            ))
-
-        conn.commit()
-        conn.close()
-
-    return redirect("/view_students")
-
-@app.route("/delete_student/<int:id>")
-def delete_student(id):
-
-    if session.get("role") != "admin":
-        return redirect("/login")
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM students WHERE id=?", (id,))
-
-    conn.commit()
-    conn.close()
-
-    return redirect("/view_students")
-
-@app.route("/edit_student/<int:id>", methods=["GET", "POST"])
-def edit_student(id):
-
-    if session.get("role") != "admin":
-        return redirect("/login")
-
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    if request.method == "POST":
-
-        name = request.form["student_name"]
-        department = request.form["department"]
-        year = request.form["year"]
-
-        cursor.execute("""
-        UPDATE students
-        SET student_name=?, department=?, year=?
-        WHERE id=?
-        """, (name, department, year, id))
-
-        conn.commit()
-        conn.close()
-
-        return redirect("/view_students")
-
-    cursor.execute("SELECT * FROM students WHERE id=?", (id,))
-    student = cursor.fetchone()
-
-    conn.close()
-
-    return render_template("admin/edit_student.html", student=student)
-
-@app.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    return send_from_directory('uploads', filename)
-
-
-@app.route("/create_exam", methods=["GET","POST"])
-@admin_required
-def create_exam():
-
     conn = get_db_connection()
 
-    departments = conn.execute(
-        "SELECT DISTINCT department FROM students"
-    ).fetchall()
+    reader = csv.reader(file.stream.read().decode("UTF-8").splitlines())
 
-    courses = conn.execute("SELECT * FROM courses").fetchall()
-    exams = conn.execute("SELECT * FROM exams").fetchall()
-
-    if request.method == "POST":
-
+    for row in reader:
         conn.execute("""
-        INSERT INTO exam_assignments (department, year, course_id, exam_id)
+        INSERT INTO students (roll_no, student_name, department, year)
         VALUES (?, ?, ?, ?)
-        """, (
-            request.form["department"],
-            request.form["year"],
-            request.form["course"],
-            request.form["exam"]
-        ))
+        """, row)
 
-        conn.commit()
-
-    conn.close()
-
-    return render_template("admin/create_exam.html",
-                           departments=departments,
-                           courses=courses,
-                           exams=exams)
-
-
-@app.route("/invigilator_exams")
-@invigilator_required
-def invigilator_exams():
-
-    conn = get_db_connection()
-
-    exams = conn.execute("""
-    SELECT ea.*, c.course_name, e.exam_name
-    FROM exam_assignments ea
-    JOIN courses c ON ea.course_id = c.id
-    JOIN exams e ON ea.exam_id = e.id
-    """).fetchall()
-
-    conn.close()
-
-    return render_template("invigilator/exams.html", exams=exams)
-
-
-@app.route("/manage_exam/<int:id>")
-@invigilator_required
-def manage_exam(id):
-
-    return render_template("invigilator/manage_exam.html", id=id)
-
-@app.route("/assign_faculty/<int:id>", methods=["GET","POST"])
-@admin_required
-def assign_faculty(id):
-
-    conn = get_db_connection()
-
-    # Get faculty users
-    faculty = conn.execute("""
-    SELECT * FROM users WHERE role='faculty'
-    """).fetchall()
-
-    if request.method == "POST":
-
-        faculty_id = request.form["faculty"]
-
-        conn.execute("""
-        UPDATE exam_assignments
-        SET assigned_faculty=?, status='assigned'
-        WHERE id=?
-        """, (faculty_id, id))
-
-        conn.commit()
-
-        return redirect("/admin_dashboard")
-
-    conn.close()
-
-    return render_template(
-        "admin/assign_faculty.html",
-        faculty=faculty,
-        assignment_id=id
-    )
-
-@app.route("/faculty_tasks")
-@faculty_required
-def faculty_tasks():
-
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT ea.*, c.course_name, e.exam_name
-    FROM exam_assignments ea
-    JOIN courses c ON ea.course_id = c.id
-    JOIN exams e ON ea.exam_id = e.id
-    WHERE ea.assigned_faculty = ?
-    """, (session["user_id"],))
-
-    tasks = cursor.fetchall()
-
-    conn.close()
-
-    return render_template("faculty/tasks.html", tasks=tasks)
-
-@app.route("/delete_exam/<int:id>")
-@admin_required
-def delete_exam(id):
-
-    conn = get_db_connection()
-
-    # ❗ First delete dependent data (IMPORTANT)
-    conn.execute("DELETE FROM student_answers WHERE assignment_id=?", (id,))
-    conn.execute("DELETE FROM question_papers WHERE assignment_id=?", (id,))
-    conn.execute("DELETE FROM model_answers WHERE assignment_id=?", (id,))
-    conn.execute("DELETE FROM exam_assignments WHERE id=?", (id,))
+    log_activity(conn, session["user_id"], "Bulk Upload", "Students CSV")
 
     conn.commit()
     conn.close()
 
-    flash("❌ Exam deleted successfully!", "success")
+    return redirect("/view_students")
 
-    return redirect("/admin_dashboard")
 
+# ================= LOGOUT =================
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(debug=True)

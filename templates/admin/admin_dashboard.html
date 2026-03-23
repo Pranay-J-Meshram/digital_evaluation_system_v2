@@ -94,5 +94,29 @@
 
 </table>
 
+<h3>Recent Activity</h3>
+
+<table class="table">
+    <tr>
+        <th>User</th>
+        <th>Action</th>
+        <th>Details</th>
+        <th>Time</th>
+    </tr>
+
+    {% for log in logs %}
+    <tr>
+        <td>{{ log.username }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.details }}</td>
+        <td>{{ log.timestamp }}</td>
+    </tr>
+    <td style="color:green;">{{ log.action }}</td>
+
+    {% endfor %}
+</table>
+
+
+
 
 {% endblock %}

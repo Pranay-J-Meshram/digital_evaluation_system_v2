@@ -119,6 +119,18 @@ add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
 
+#---------------
+#---------------
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT,
+    details TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
 # ---------------------------------------------------
 # DEFAULT USERS
 # ---------------------------------------------------

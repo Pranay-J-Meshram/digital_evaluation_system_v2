@@ -6,6 +6,22 @@
     <title>Digital Evaluation System</title>
 
     <style>
+        .alert {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .alert.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .alert.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
         /*       */
 
         .status.done {
@@ -366,6 +382,12 @@
             <a href="/logout">Logout</a>
 
         </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endwith %}
 
 
         <!-- CONTENT -->
