@@ -2,7 +2,14 @@ from flask import Flask, render_template, request, redirect, session,send_from_d
 import sqlite3, os
 import pandas as pd
 import csv
+import random, string
 from flask import flash
+from functools import wraps
+import smtplib
+from email.mime.text import MIMEText
+from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash
+
 
 
 app = Flask(__name__)
@@ -23,58 +30,87 @@ def log_activity(conn, user_id, action, details):
 
 # ================= AUTH DECORATORS =================
 def admin_required(f):
-    def wrapper(*args, **kwargs):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
         if session.get("role") != "admin":
+            flash("Access denied")
             return redirect("/")
         return f(*args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
+    return decorated_function
+
 
 def faculty_required(f):
-    def wrapper(*args, **kwargs):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
         if session.get("role") != "faculty":
+            flash("Access denied")
             return redirect("/")
         return f(*args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
+    return decorated_function
+
 
 def invigilator_required(f):
-    def wrapper(*args, **kwargs):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
         if session.get("role") != "invigilator":
+            flash("Access denied")
             return redirect("/")
         return f(*args, **kwargs)
-    wrapper.__name__ = f.__name__
-    return wrapper
+    return decorated_function
 
 # ================= LOGIN =================
-@app.route("/", methods=["GET","POST"])
+
+@app.route("/", methods=["GET", "POST"])
 def login():
+
     if request.method == "POST":
+
         username = request.form["username"]
         password = request.form["password"]
+        role = request.form["role"]
 
         conn = get_db_connection()
-        user = conn.execute(
-            "SELECT * FROM users WHERE username=? AND password=?",
-            (username, password)
-        ).fetchone()
+
+        user = conn.execute("""
+            SELECT * FROM users 
+            WHERE username=? AND role=? AND is_approved=1
+        """, (username, role)).fetchone()
 
         conn.close()
 
-        if user:
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
+        # ❌ USER NOT FOUND
+        if not user:
+            flash("Invalid credentials or not approved yet")
+            return redirect("/")
 
-            if user["role"] == "admin":
-                return redirect("/admin_dashboard")
-            elif user["role"] == "faculty":
-                return redirect("/faculty_dashboard")
-            else:
-                return redirect("/invigilator_dashboard")
+        # ❌ WRONG PASSWORD
+        if not check_password_hash(user["password"], password):
+            flash("Incorrect password")
+            return redirect("/")
+
+        # ✅ LOGIN SUCCESS
+        session["user_id"] = user["id"]
+        session["username"] = user["username"]
+        session["role"] = user["role"]
+
+        # 🔥 MUST CHANGE PASSWORD CHECK
+        if user["must_change_password"] == 1:
+            return redirect("/change_password")
+
+        # 🔁 REDIRECT BASED ON ROLE
+        if user["role"] == "admin":
+            return redirect("/admin_dashboard")
+
+        elif user["role"] == "faculty":
+            return redirect("/faculty_dashboard")
+
+        elif user["role"] == "invigilator":
+            return redirect("/invigilator_dashboard")
 
     return render_template("login.html")
 
 # ================= ADMIN DASHBOARD =================
+
 @app.route("/admin_dashboard")
 @admin_required
 def admin_dashboard():
@@ -768,6 +804,406 @@ def bulk_upload_students():
     conn.close()
 
     return redirect("/view_students")
+
+#==================register 
+
+@app.route("/register", methods=["POST"])
+def register():
+
+    role = request.form["role"]
+
+    conn = get_db_connection()
+
+    if role == "faculty":
+
+        conn.execute("""
+        INSERT INTO pending_faculty 
+        (full_name, email, mobile, department, subjects, course_codes, address)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            request.form["name"],
+            request.form["email"],
+            request.form["mobile"],
+            request.form["department"],
+            request.form.get("subjects", ""),
+            request.form.get("course_codes", ""),
+            request.form["address"]
+        ))
+
+    elif role == "invigilator":
+
+        conn.execute("""
+        INSERT INTO pending_invigilator 
+        (full_name, email, mobile, department, address)
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            request.form["name"],
+            request.form["email"],
+            request.form["mobile"],
+            request.form["department"],
+            request.form["address"]
+        ))
+
+    conn.commit()
+    conn.close()
+
+    flash("Registration submitted! Wait for admin approval.")
+    return redirect("/")
+
+#========================
+
+def generate_username(full_name, mobile):
+    parts = full_name.strip().split()
+    first = parts[0][0].lower()
+    last = parts[-1].lower()
+    return f"{first}{last}{mobile[-2:]}"
+
+
+def generate_unique_username(full_name, mobile, cursor):
+    base = generate_username(full_name, mobile)
+    username = base
+    count = 1
+
+    while True:
+        cursor.execute("SELECT id FROM users WHERE username=?", (username,))
+        if not cursor.fetchone():
+            return username
+        username = f"{base}{count}"
+        count += 1
+
+
+def generate_password():
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(8))
+
+#============================
+
+EMAIL_ADDRESS = "kohalerohit38@gmail.com"
+EMAIL_PASSWORD = "bppursgchhmlomky"
+
+def send_email(to, username, password, name):
+    subject = "Account Approved"
+    body = f"""
+Hello {name},
+
+Your account has been approved.
+
+Username: {username}
+Password: {password}
+
+Login: http://127.0.0.1:5000
+"""
+
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_ADDRESS, to, msg.as_string())
+        server.quit()
+    except Exception as e:
+        print("Email error:", e)
+        
+#==============================
+
+@app.route("/pending_requests")
+def pending_requests():
+
+    conn = get_db_connection()
+
+    faculty = conn.execute("SELECT * FROM pending_faculty").fetchall()
+    invigilator = conn.execute("SELECT * FROM pending_invigilator").fetchall()
+
+    conn.close()
+
+    return render_template(
+        "admin/pending_requests.html",
+        faculty=faculty,
+        invigilator=invigilator
+    )
+
+#=================================
+
+@app.route("/approve_faculty/<int:id>")
+def approve_faculty(id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    f = cursor.execute(
+        "SELECT * FROM pending_faculty WHERE id=?", (id,)
+    ).fetchone()
+
+    if f:
+        username = generate_unique_username(f["full_name"], f["mobile"], cursor)
+        password = generate_password()
+
+        # INSERT INTO USERS
+        cursor.execute("""
+        INSERT INTO users (username,email,password,role,is_approved,must_change_password)
+        VALUES (?,?,?,?,?,?)
+        """, (
+            username,
+            f["email"],
+            generate_password_hash(password),
+            "faculty",
+            1,
+            1
+        ))
+
+        user_id = cursor.lastrowid
+
+        # INSERT INTO PROFILE
+        cursor.execute("""
+        INSERT INTO faculty_profiles 
+        (user_id,full_name,mobile,department,subjects,course_codes,address)
+        VALUES (?,?,?,?,?,?,?)
+        """, (
+            user_id,
+            f["full_name"],
+            f["mobile"],
+            f["department"],
+            f["subjects"],
+            f["course_codes"],
+            f["address"]
+        ))
+
+        send_email(f["email"], username, password, f["full_name"])
+
+        cursor.execute("DELETE FROM pending_faculty WHERE id=?", (id,))
+
+        conn.commit()
+
+    conn.close()
+
+    return redirect("/pending_requests")
+
+#====================================
+
+@app.route("/approve_invigilator/<int:id>")
+def approve_invigilator(id):
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    i = cursor.execute(
+        "SELECT * FROM pending_invigilator WHERE id=?", (id,)
+    ).fetchone()
+
+    if i:
+        username = generate_unique_username(i["full_name"], i["mobile"], cursor)
+        password = generate_password()
+
+        cursor.execute("""
+        INSERT INTO users (username,email,password,role,is_approved,must_change_password)
+        VALUES (?,?,?,?,?,?)
+        """, (
+            username,
+            i["email"],
+            generate_password_hash(password),
+            "invigilator",
+            1,
+            1
+        ))
+
+        user_id = cursor.lastrowid
+
+        cursor.execute("""
+        INSERT INTO invigilator_profiles
+        (user_id,full_name,mobile,department,address)
+        VALUES (?,?,?,?,?)
+        """, (
+            user_id,
+            i["full_name"],
+            i["mobile"],
+            i["department"],
+            i["address"]
+        ))
+
+        send_email(i["email"], username, password, i["full_name"])
+
+        cursor.execute("DELETE FROM pending_invigilator WHERE id=?", (id,))
+
+        conn.commit()
+
+    conn.close()
+
+    return redirect("/pending_requests")
+
+#===================================
+
+@app.route("/reject_faculty/<int:id>")
+def reject_faculty(id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM pending_faculty WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect("/pending_requests")
+
+
+@app.route("/reject_invigilator/<int:id>")
+def reject_invigilator(id):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM pending_invigilator WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect("/pending_requests")
+
+#====================================
+
+@app.route("/pending_users")
+@admin_required
+def pending_users():
+
+    conn = get_db_connection()
+
+    users = conn.execute("""
+        SELECT * FROM users WHERE is_approved='0'
+    """).fetchall()
+
+    conn.close()
+
+    return render_template("admin/pending_users.html", users=users)
+
+#====================================
+
+@app.route("/approve_user/<int:user_id>")
+@admin_required
+def approve_user(user_id):
+
+    conn = get_db_connection()
+
+    conn.execute("""
+        UPDATE users SET is_approved='1' WHERE id=?
+    """, (user_id,))
+    
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/pending_users")
+
+#====================================
+
+@app.route("/reject_user/<int:user_id>")
+@admin_required
+def reject_user(user_id):
+
+    conn = get_db_connection()
+
+    conn.execute("""
+        DELETE FROM users WHERE id=?
+    """, (user_id,))
+
+    conn.commit()
+    conn.close()
+
+    return redirect("/pending_users")
+
+@app.route("/change_password", methods=["GET", "POST"])
+def change_password():
+
+    if not session.get("user_id"):
+        return redirect("/")
+
+    if request.method == "POST":
+        old = request.form["old_password"]
+        new = request.form["new_password"]
+        confirm = request.form["confirm_password"]
+
+        conn = get_db_connection()
+
+        user = conn.execute("""
+        SELECT * FROM users WHERE id=?
+        """, (session["user_id"],)).fetchone()
+
+        if not check_password_hash(user["password"], old):
+            flash("Old password incorrect")
+            return redirect("/change_password")
+
+        if new != confirm:
+            flash("Passwords do not match")
+            return redirect("/change_password")
+
+        conn.execute("""
+        UPDATE users
+        SET password=?, must_change_password=0
+        WHERE id=?
+        """, (generate_password_hash(new), session["user_id"]))
+
+        conn.commit()
+        conn.close()
+
+        session.clear()
+        flash("Password changed. Please login again.")
+        return redirect("/")
+
+    return render_template("change_password.html")
+
+import uuid
+
+@app.route("/forgot_password", methods=["GET", "POST"])
+def forgot_password():
+
+    if request.method == "POST":
+        email = request.form["email"]
+
+        conn = get_db_connection()
+
+        user = conn.execute("""
+        SELECT * FROM users WHERE email=?
+        """, (email,)).fetchone()
+
+        if user:
+            token = str(uuid.uuid4())
+
+            conn.execute("""
+            UPDATE users SET reset_token=? WHERE email=?
+            """, (token, email))
+
+            conn.commit()
+
+            reset_link = f"http://127.0.0.1:5000/reset_password/{token}"
+
+            send_email(email, "Password Reset", reset_link)
+
+            flash("Reset link sent to email")
+
+        conn.close()
+
+    return render_template("forgot_password.html")
+
+@app.route("/reset_password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+
+    conn = get_db_connection()
+
+    user = conn.execute("""
+    SELECT * FROM users WHERE reset_token=?
+    """, (token,)).fetchone()
+
+    if not user:
+        return "Invalid or expired link"
+
+    if request.method == "POST":
+        new_password = request.form["password"]
+
+        conn.execute("""
+        UPDATE users SET password=?, reset_token=NULL WHERE id=?
+        """, (generate_password_hash(new_password), user["id"]))
+
+        conn.commit()
+        conn.close()
+
+        flash("Password reset successful")
+        return redirect("/")
+
+    return render_template("reset_password.html")
+
 
 
 # ================= LOGOUT =================

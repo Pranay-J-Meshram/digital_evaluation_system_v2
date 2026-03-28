@@ -1,15 +1,71 @@
 import sqlite3
-
+from werkzeug.security import generate_password_hash
 conn = sqlite3.connect("database.db")
 cursor = conn.cursor()
 
 # USERS TABLE
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-username TEXT UNIQUE,
-password TEXT,
-role TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    email TEXT UNIQUE,
+    password TEXT,
+    role TEXT,   -- admin / faculty / invigilator
+    is_approved INTEGER DEFAULT 0,  -- 0 = pending, 1 = approved
+    must_change_password INTEGER DEFAULT 0)
+""")
+
+# FACULTY PROFILE
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS faculty_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    full_name TEXT,
+    mobile TEXT,
+    department TEXT,
+    subjects TEXT,
+    course_codes TEXT,
+    address TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+)
+""")
+
+# INVIGILATOR PROFILE
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS invigilator_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    full_name TEXT,
+    mobile TEXT,
+    department TEXT,
+    address TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+)
+""")
+
+# PENDING FACULTY
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS pending_faculty (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT,
+    email TEXT,
+    mobile TEXT,
+    department TEXT,
+    subjects TEXT,
+    course_codes TEXT,
+    address TEXT
+)
+""")
+
+# PENDING INVIGILATOR
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS pending_invigilator (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT,
+    email TEXT,
+    mobile TEXT,
+    department TEXT,
+    address TEXT
 )
 """)
 
@@ -21,6 +77,7 @@ course_code TEXT UNIQUE,
 course_name TEXT
 )
 """)
+
 # DEPARTMENT TABLE
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS departments (
@@ -102,6 +159,19 @@ assigned_faculty INTEGER
 )
 """)
 
+cursor.execute("SELECT * FROM users WHERE username=?", ("admin",))
+if not cursor.fetchone():
+    cursor.execute("""
+    INSERT INTO users (username, email, password, role, is_approved)
+    VALUES (?, ?, ?, ?, ?)
+    """, (
+        "admin",
+        "admin@gmail.com",
+        generate_password_hash("admin123"),
+        "admin",
+        1
+    ))
+
 # 🟢 STEP 1: SAFE COLUMN ADD FUNCTION
 
 def add_column_if_not_exists(cursor, table, column_def):
@@ -118,6 +188,9 @@ def add_column_if_not_exists(cursor, table, column_def):
 add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
+add_column_if_not_exists(cursor, "users", "reset_token TEXT")
+
+
 
 #---------------
 #---------------
@@ -130,14 +203,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
-
-# ---------------------------------------------------
-# DEFAULT USERS
-# ---------------------------------------------------
-
-cursor.execute("INSERT OR IGNORE INTO users VALUES (1,'admin','123','admin')")
-cursor.execute("INSERT OR IGNORE INTO users VALUES (2,'faculty1','123','faculty')")
-cursor.execute("INSERT OR IGNORE INTO users VALUES (3,'invigilator1','123','invigilator')")
 
 # ---------------------------------------------------
 # PREDEFINED COURSES
@@ -181,4 +246,4 @@ cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Mechanic
 conn.commit()
 conn.close()
 
-print("Database created successfully with A NEW sample data")
+print("Database created successfully with AAAA NEW sample data")
