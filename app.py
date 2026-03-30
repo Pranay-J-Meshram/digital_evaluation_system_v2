@@ -1,16 +1,14 @@
-from flask import Flask, render_template, request, redirect, session,send_from_directory, url_for
+from flask import Flask, flash, render_template, request, redirect, session,send_from_directory, url_for
 import sqlite3, os
 import pandas as pd
-import csv
+import csv, re
 import random, string
-from flask import flash
 from functools import wraps
 import smtplib
 from email.mime.text import MIMEText
-from werkzeug.security import generate_password_hash
-from werkzeug.security import check_password_hash
-
-
+from werkzeug.security import generate_password_hash, check_password_hash
+import io
+from openpyxl import load_workbook
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -63,51 +61,82 @@ def invigilator_required(f):
 @app.route("/", methods=["GET", "POST"])
 def login():
 
+    conn = get_db_connection()
+
+    # ----------------------------
+    # BUILD SUBJECT MAPPING
+    # ----------------------------
+    subjects_by_dept = {}
+    departments_set = set()
+
+    courses = conn.execute("SELECT * FROM courses").fetchall()
+
+    for c in courses:
+        dept = c["department"]
+        departments_set.add(dept)
+
+        if dept not in subjects_by_dept:
+            subjects_by_dept[dept] = []
+
+        subjects_by_dept[dept].append({
+            "name": c["course_name"],
+            "code": c["course_code"]
+        })
+
+    # Convert departments to list
+    departments = [{"department": d} for d in departments_set]
+
+    # ----------------------------
+    # LOGIN LOGIC
+    # ----------------------------
     if request.method == "POST":
 
         username = request.form["username"]
         password = request.form["password"]
         role = request.form["role"]
 
-        conn = get_db_connection()
-
         user = conn.execute("""
             SELECT * FROM users 
             WHERE username=? AND role=? AND is_approved=1
         """, (username, role)).fetchone()
 
-        conn.close()
-
-        # ❌ USER NOT FOUND
         if not user:
+            conn.close()
             flash("Invalid credentials or not approved yet")
             return redirect("/")
 
-        # ❌ WRONG PASSWORD
         if not check_password_hash(user["password"], password):
+            conn.close()
             flash("Incorrect password")
             return redirect("/")
 
-        # ✅ LOGIN SUCCESS
+        # SESSION
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         session["role"] = user["role"]
 
-        # 🔥 MUST CHANGE PASSWORD CHECK
+        # FORCE PASSWORD CHANGE
         if user["must_change_password"] == 1:
+            conn.close()
             return redirect("/change_password")
 
-        # 🔁 REDIRECT BASED ON ROLE
-        if user["role"] == "admin":
+        conn.close()
+
+        # REDIRECT
+        if role == "admin":
             return redirect("/admin_dashboard")
-
-        elif user["role"] == "faculty":
+        elif role == "faculty":
             return redirect("/faculty_dashboard")
-
-        elif user["role"] == "invigilator":
+        elif role == "invigilator":
             return redirect("/invigilator_dashboard")
 
-    return render_template("login.html")
+    conn.close()
+
+    return render_template(
+        "login.html",
+        subjects_by_dept=subjects_by_dept,
+        departments=departments
+    )
 
 # ================= ADMIN DASHBOARD =================
 
@@ -267,7 +296,7 @@ def view_students():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT department FROM departments")
+    cursor.execute("SELECT DISTINCT department FROM courses")
     departments = cursor.fetchall()
 
     students = []
@@ -378,17 +407,152 @@ def view_exams():
 
 #============== view course ===========
 
-@app.route("/view_courses")
+@app.route("/manage_courses", methods=["GET", "POST"])
 @admin_required
-def view_subjects():
+def manage_courses():
 
     conn = get_db_connection()
 
-    courses = conn.execute("SELECT * FROM courses").fetchall()
+    # -------------------------
+    # ADD COURSE (POST)
+    # -------------------------
+    if request.method == "POST":
+        course_name = request.form["course_name"].strip()
+        course_code = request.form["course_code"].strip()
+        dept_form = request.form["department"].strip()
+
+        if not course_name or not course_code or not dept_form:
+            flash("All fields are required!")
+            return redirect("/manage_courses")
+
+        try:
+            conn.execute("""
+            INSERT INTO courses (course_name, course_code, department)
+            VALUES (?, ?, ?)
+            """, (course_name, course_code, dept_form))
+
+            conn.commit()
+            flash("Course added successfully!")
+
+        except Exception as e:
+            flash("Course code already exists!")
+
+        return redirect("/manage_courses")   # ✅ IMPORTANT
+
+    # -------------------------
+    # SEARCH & FILTER (GET)
+    # -------------------------
+    search = request.args.get("search")
+    dept_filter = request.args.get("department")
+
+    query = "SELECT * FROM courses WHERE 1=1"
+    params = []
+
+    if search:
+        query += " AND (course_name LIKE ? OR course_code LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    if dept_filter:
+        query += " AND department=?"
+        params.append(dept_filter)
+
+    courses = conn.execute(query, params).fetchall()
+
+    # -------------------------
+    # GET UNIQUE DEPARTMENTS
+    # -------------------------
+    departments = conn.execute("""
+    SELECT DISTINCT department FROM courses
+    """).fetchall()
 
     conn.close()
 
-    return render_template("admin/view_courses.html", courses=courses)
+    return render_template(
+        "admin/manage_courses.html",
+        courses=courses,
+        departments=departments
+    )
+#=====================================
+
+@app.route("/delete_course/<int:id>")
+@admin_required
+def delete_course(id):
+
+    conn = get_db_connection()
+
+    conn.execute("DELETE FROM courses WHERE id=?", (id,))
+    conn.commit()
+
+    conn.close()
+
+    return redirect("/manage_courses")
+
+#===========================================
+
+@app.route("/edit_course/<int:id>", methods=["GET", "POST"])
+@admin_required
+def edit_course(id):
+
+    conn = get_db_connection()
+
+    if request.method == "POST":
+        conn.execute("""
+        UPDATE courses
+        SET course_name=?, course_code=?, department=?
+        WHERE id=?
+        """, (
+            request.form["course_name"],
+            request.form["course_code"],
+            request.form["department"],
+            id
+        ))
+
+        conn.commit()
+        return redirect("/manage_courses")
+
+    course = conn.execute(
+        "SELECT * FROM courses WHERE id=?", (id,)
+    ).fetchone()
+
+    conn.close()
+
+    return render_template("admin/edit_course.html", course=course)
+
+#=============================================
+
+@app.route("/bulk_upload_courses", methods=["POST"])
+@admin_required
+def bulk_upload_courses():
+
+    file = request.files["file"]
+
+    if not file:
+        flash("No file uploaded")
+        return redirect("/manage_courses")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    csv_file = csv.reader(file.stream.read().decode("utf-8").splitlines())
+
+    next(csv_file)  # skip header
+
+    for row in csv_file:
+        course_name, course_code, department = row
+
+        try:
+            cursor.execute("""
+            INSERT INTO courses (course_name, course_code, department)
+            VALUES (?, ?, ?)
+            """, (course_name, course_code, department))
+        except:
+            pass  # skip duplicates
+
+    conn.commit()
+    conn.close()
+
+    flash("Courses uploaded successfully!")
+    return redirect("/manage_courses")
 
 # ================= CREATE EXAM =================
 
@@ -786,65 +950,133 @@ def evaluate(answer_id):
 @admin_required
 def bulk_upload_students():
 
-    file = request.files["file"]
+    file = request.files.get("file")
+
+    if not file:
+        flash("No file uploaded")
+        return redirect("/view_students")
+
+    filename = file.filename.lower()
 
     conn = get_db_connection()
 
-    reader = csv.reader(file.stream.read().decode("UTF-8").splitlines())
+    try:
+        # =========================
+        # 📄 CSV FILE SUPPORT
+        # =========================
+        if filename.endswith(".csv"):
 
-    for row in reader:
-        conn.execute("""
-        INSERT INTO students (roll_no, student_name, department, year)
-        VALUES (?, ?, ?, ?)
-        """, row)
+            file_data = file.read()
 
-    log_activity(conn, session["user_id"], "Bulk Upload", "Students CSV")
+            try:
+                content = file_data.decode("utf-8")
+            except UnicodeDecodeError:
+                content = file_data.decode("latin-1")
 
-    conn.commit()
-    conn.close()
+            stream = io.StringIO(content)
+            reader = csv.reader(stream)
+
+            next(reader, None)  # skip header
+
+            for row in reader:
+                if len(row) < 4:
+                    continue
+
+                conn.execute("""
+                INSERT INTO students (roll_no, student_name, department, year)
+                VALUES (?, ?, ?, ?)
+                """, (row[0], row[1], row[2], row[3]))
+
+        # =========================
+        # 📊 EXCEL FILE SUPPORT
+        # =========================
+        elif filename.endswith(".xlsx"):
+
+            wb = load_workbook(file)
+            sheet = wb.active
+
+            for i, row in enumerate(sheet.iter_rows(values_only=True)):
+                if i == 0:
+                    continue  # skip header
+
+                if not row or len(row) < 4:
+                    continue
+
+                conn.execute("""
+                INSERT INTO students (roll_no, student_name, department, year)
+                VALUES (?, ?, ?, ?)
+                """, (row[0], row[1], row[2], row[3]))
+
+        else:
+            flash("Unsupported file format. Upload CSV or Excel (.xlsx)")
+            conn.close()
+            return redirect("/view_students")
+
+        # =========================
+        # ✅ LOGGING
+        # =========================
+        log_activity(conn, session["user_id"], "Bulk Upload", file.filename)
+
+        conn.commit()
+        flash("Students uploaded successfully!")
+
+    except Exception as e:
+        conn.rollback()
+        flash(f"Upload failed: {str(e)}")
+
+    finally:
+        conn.close()
 
     return redirect("/view_students")
-
 #==================register 
 
 @app.route("/register", methods=["POST"])
 def register():
 
+    name = request.form["name"]
+    email = request.form["email"]
+    mobile = request.form["mobile"]
+    department = request.form["department"]
+    course_codes = request.form.get("course_codes", "")
+    address = request.form["address"]
     role = request.form["role"]
+
+    # ----------------------------
+    # VALIDATION
+    # ----------------------------
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        flash("Invalid email format")
+        return redirect("/")
+
+    if not re.match(r"^[0-9]{10}$", mobile):
+        flash("Invalid mobile number")
+        return redirect("/")
 
     conn = get_db_connection()
 
-    if role == "faculty":
+    try:
+        if role == "faculty":
+            conn.execute("""
+            INSERT INTO pending_faculty
+            (username,email,mobile,department,subjects,course_codes,address)
+            VALUES (?,?,?,?,?,?,?)
+            """, (name, email, mobile, department, course_codes, course_codes, address))
 
-        conn.execute("""
-        INSERT INTO pending_faculty 
-        (full_name, email, mobile, department, subjects, course_codes, address)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            request.form["name"],
-            request.form["email"],
-            request.form["mobile"],
-            request.form["department"],
-            request.form.get("subjects", ""),
-            request.form.get("course_codes", ""),
-            request.form["address"]
-        ))
+        elif role == "invigilator":
+            conn.execute("""
+            INSERT INTO pending_invigilator
+            (username,email,mobile,department,address)
+            VALUES (?,?,?,?,?)
+            """, (name, email, mobile, department, address))
 
-    elif role == "invigilator":
+        conn.commit()
 
-        conn.execute("""
-        INSERT INTO pending_invigilator 
-        (full_name, email, mobile, department, address)
-        VALUES (?, ?, ?, ?, ?)
-        """, (
-            request.form["name"],
-            request.form["email"],
-            request.form["mobile"],
-            request.form["department"],
-            request.form["address"]
-        ))
+    except Exception as e:
+        print("REGISTER ERROR:", e)
+        flash("Something went wrong!")
+        conn.close()
+        return redirect("/")
 
-    conn.commit()
     conn.close()
 
     flash("Registration submitted! Wait for admin approval.")

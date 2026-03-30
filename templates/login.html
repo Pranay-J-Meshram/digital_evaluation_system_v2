@@ -46,22 +46,6 @@
             color: #fff;
         }
 
-        /* Buttons */
-        .btn-approve {
-            background: #28a745;
-            border: none;
-        }
-
-        .btn-reject {
-            background: #dc3545;
-            border: none;
-        }
-
-        .action-buttons a {
-            margin-bottom: 5px;
-            display: block;
-        }
-
         #signupForm {
             display: none;
         }
@@ -69,6 +53,19 @@
 </head>
 
 <body>
+
+    <!-- FLASH MESSAGES -->
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="container mt-3">
+        <div class="alert alert-warning">
+            {% for msg in messages %}
+            <p class="mb-0">{{ msg }}</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endwith %}
 
     <div class="main-card">
 
@@ -94,7 +91,7 @@
                         <option value="invigilator">Invigilator</option>
                     </select>
 
-                    <input name="username" class="form-control mb-3" placeholder="Username" required>
+                    <input name="username" class="form-control mb-3" placeholder="Username or Email" required>
 
                     <input name="password" type="password" class="form-control mb-3" placeholder="Password" required>
 
@@ -116,7 +113,8 @@
 
                     <h4>Register</h4>
 
-                    <select name="role" class="form-control mb-3" required>
+                    <!-- ROLE -->
+                    <select name="role" id="roleSelect" class="form-control mb-3" required>
                         <option disabled selected>Select Role</option>
                         <option value="faculty">Faculty</option>
                         <option value="invigilator">Invigilator</option>
@@ -124,18 +122,37 @@
 
                     <input name="name" class="form-control mb-3" placeholder="Full Name" required>
 
-                    <input name="email" class="form-control mb-3" placeholder="Email" required>
+                    <!-- EMAIL -->
+                    <input type="email" name="email" class="form-control mb-3" placeholder="Email" required>
 
-                    <input name="mobile" class="form-control mb-3" placeholder="Mobile" required>
+                    <!-- MOBILE -->
+                    <input type="text" name="mobile" maxlength="10" pattern="[0-9]{10}" class="form-control mb-3"
+                        placeholder="10-digit Mobile" required>
 
-                    <input name="department" class="form-control mb-3" placeholder="Department" required>
+                    <!-- DEPARTMENT -->
+                    <select name="department" id="departmentSelect" class="form-control mb-3" required>
+                        <option disabled selected>Select Department</option>
+                        {% for d in departments %}
+                        <option value="{{ d.department }}">{{ d.department }}</option>
+                        {% endfor %}
+                    </select>
 
+                    <!-- SUBJECTS (ONLY FOR FACULTY) -->
+                    <div id="subjectSection" style="display:none;">
+                        <label>Select Subjects</label>
+                        <div id="subjectsBox" class="mb-2"></div>
+                    </div>
+
+                    <!-- HIDDEN FIELDS -->
+                    <input type="hidden" name="subjects" id="subjectsField">
+                    <input type="hidden" name="course_codes" id="courseCodes">
+
+                    <!-- ADDRESS -->
                     <textarea name="address" class="form-control mb-3" placeholder="Address"></textarea>
 
                     <button class="btn btn-signup w-100">Register</button>
 
-                    <button type="button" class="btn btn-login w-100 mt-2" onclick="showLogin()">Back to
-                        Login</button>
+                    <button type="button" class="btn btn-login w-100 mt-2" onclick="showLogin()">Back to Login</button>
 
                 </form>
             </div>
@@ -148,9 +165,75 @@
             document.getElementById("loginForm").style.display = "none";
             document.getElementById("signupForm").style.display = "block";
         }
+
         function showLogin() {
             document.getElementById("signupForm").style.display = "none";
             document.getElementById("loginForm").style.display = "block";
+        }
+
+        const subjectsByDept = {{ subjects_by_dept | tojson | safe }};
+        const deptSelect = document.getElementById("departmentSelect");
+        const subjectsBox = document.getElementById("subjectsBox");
+        const courseCodesInput = document.getElementById("courseCodes");
+        const subjectsField = document.getElementById("subjectsField");
+
+        const roleSelect = document.getElementById("roleSelect");
+        const subjectSection = document.getElementById("subjectSection");
+
+        let selectedCodes = [];
+        let selectedNames = [];
+
+        // ROLE CHANGE → SHOW/HIDE SUBJECTS
+        roleSelect.addEventListener("change", () => {
+            if (roleSelect.value === "faculty") {
+                subjectSection.style.display = "block";
+            } else {
+                subjectSection.style.display = "none";
+                selectedCodes = [];
+                selectedNames = [];
+                courseCodesInput.value = "";
+                subjectsField.value = "";
+            }
+        });
+
+        // LOAD SUBJECTS
+        deptSelect.addEventListener("change", () => {
+            const dept = deptSelect.value;
+            subjectsBox.innerHTML = "";
+            selectedCodes = [];
+            selectedNames = [];
+
+            if (subjectsByDept[dept]) {
+                subjectsByDept[dept].forEach(sub => {
+
+                    let div = document.createElement("div");
+
+                    div.innerHTML = `
+                    <input type="checkbox" value="${sub.code}" 
+                           data-name="${sub.name}"
+                           onchange="updateCourses(this)">
+                    ${sub.name}
+                `;
+
+                    subjectsBox.appendChild(div);
+                });
+            }
+        });
+
+        // UPDATE SUBJECTS
+        function updateCourses(cb) {
+            const name = cb.dataset.name;
+
+            if (cb.checked) {
+                selectedCodes.push(cb.value);
+                selectedNames.push(name);
+            } else {
+                selectedCodes = selectedCodes.filter(c => c !== cb.value);
+                selectedNames = selectedNames.filter(n => n !== name);
+            }
+
+            courseCodesInput.value = selectedCodes.join(",");
+            subjectsField.value = selectedNames.join(",");
         }
     </script>
 

@@ -7,7 +7,7 @@
 
     <select name="department">
         {% for d in departments %}
-        <option>{{ d['department'] }}</option>
+        <option value="{{ d.department }}">{{ d.department }}</option>
         {% endfor %}
     </select>
 

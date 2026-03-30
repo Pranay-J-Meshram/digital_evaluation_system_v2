@@ -72,18 +72,16 @@ CREATE TABLE IF NOT EXISTS pending_invigilator (
 # COURSES TABLE
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS courses (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-course_code TEXT UNIQUE,
-course_name TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_name TEXT,
+    course_code TEXT UNIQUE,
+    department TEXT
 )
 """)
 
-# DEPARTMENT TABLE
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS departments (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-department TEXT UNIQUE
-)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_course_code 
+ON courses(course_code)
 """)
 
 # STUDENTS TABLE
@@ -203,18 +201,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
-
-# ---------------------------------------------------
-# PREDEFINED COURSES
-# ---------------------------------------------------
-
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (1,'CM201','Data Structures')")
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (2,'CM202','Database Management')")
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (3,'CM203','Operating Systems')")
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (4,'CM204','Computer Networks')")
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (5,'CM205','Software Engineering')")
-cursor.execute("INSERT OR IGNORE INTO courses VALUES (6,'CM206','Advanced Computer Network')")
-
 # ---------------------------------------------------
 # PREDEFINED STUDENTS
 # ---------------------------------------------------
@@ -235,15 +221,7 @@ cursor.execute("INSERT OR IGNORE INTO exams VALUES (3,'Semester Exam')")
 cursor.execute("INSERT OR IGNORE INTO exams VALUES (4,'Practical Exam')")
 cursor.execute("INSERT OR IGNORE INTO exams VALUES (5,'Viva')")
 
-# ---------------------------------------------------
-# PREDEFINED DEPARTMENTS
-# ---------------------------------------------------
-cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Computer Engineering')")
-cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Civil Engineering')")
-cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Electronics Engineering')")
-cursor.execute("INSERT OR IGNORE INTO departments (department) VALUES ('Mechanical Engineering')")
-
 conn.commit()
 conn.close()
 
-print("Database created successfully with AAAA NEW sample data")
+print("Database created successfully with AA NEW sample data")
