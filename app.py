@@ -93,12 +93,12 @@ def login():
 
         username = request.form["username"]
         password = request.form["password"]
-        role = request.form["role"]
+        
 
         user = conn.execute("""
-            SELECT * FROM users 
-            WHERE username=? AND role=? AND is_approved=1
-        """, (username, role)).fetchone()
+        SELECT * FROM users 
+        WHERE (username=? OR email=?) AND is_approved=1
+        """, (username, username)).fetchone()
 
         if not user:
             conn.close()
@@ -115,22 +115,23 @@ def login():
         session["username"] = user["username"]
         session["role"] = user["role"]
 
-        # FORCE PASSWORD CHANGE
+        # Force password change
         if user["must_change_password"] == 1:
-            conn.close()
             return redirect("/change_password")
 
-        conn.close()
-
-        # REDIRECT
-        if role == "admin":
+        # Auto redirect
+        if user["role"] == "admin":
             return redirect("/admin_dashboard")
-        elif role == "faculty":
-            return redirect("/faculty_dashboard")
-        elif role == "invigilator":
-            return redirect("/invigilator_dashboard")
 
-    conn.close()
+        elif user["role"] == "faculty":
+            return redirect("/faculty_dashboard")
+
+        elif user["role"] == "invigilator":
+            return redirect("/invigilator_dashboard")
+        
+
+        conn.close()
+       
 
     return render_template(
         "login.html",
