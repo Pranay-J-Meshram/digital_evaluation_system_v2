@@ -1,36 +1,69 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Upload Student Answer</h2>
 
-<form method="POST" enctype="multipart/form-data">
+<h2>Upload Student Answers</h2>
 
-    <!-- Hidden Assignment ID -->
-    <input type="hidden" name="assignment_id" value="{{ assignment_id }}">
+<!-- 🔥 EXAM DETAILS -->
+<div style="margin-bottom:20px;">
+    <strong>Assignment ID:</strong> {{ assignment.id }} <br>
+    <strong>Department:</strong> {{ assignment.department }} <br>
+    <strong>Year:</strong> {{ assignment.year }} <br>
+    <strong>Course ID:</strong> {{ assignment.course_id }} <br>
+    <strong>Exam ID:</strong> {{ assignment.exam_id }} <br>
+</div>
 
-    <label>Select Student</label><br><br>
+<table border="1" cellpadding="10" width="100%">
 
-    <select name="student_id" required>
-        {% for s in students %}
-        <option value="{{s['id']}}">
-            {{s['roll_no']}} - {{s['student_name']}}
-        </option>
-        {% endfor %}
-    </select>
+    <tr>
+        <th>Roll No</th>
+        <th>Name</th>
+        <th>Department</th>
+        <th>Year</th>
+        <th>Status</th>
+        <th>Upload</th>
+    </tr>
 
-    <br><br>
+    {% for s in students %}
 
-    <label>Upload Answer Sheet</label><br><br>
-    <input type="file" name="file" required>
+    <tr>
+        <td>{{ s.roll_no }}</td>
+        <td>{{ s.student_name }}</td>
+        <td>{{ s.department }}</td>
+        <td>{{ s.year }}</td>
 
-    <br><br>
+        <td>
+            {% if s.id in uploaded_students %}
+            <span style="color:green;">Uploaded</span>
+            {% else %}
+            <span style="color:red;">Pending</span>
+            {% endif %}
+        </td>
 
-    <button type="submit">Upload</button>
+        <td>
+            <form method="POST" enctype="multipart/form-data" action="/upload_answer?assignment_id={{ assignment.id }}">
 
-</form>
+                <input type="hidden" name="student_id" value="{{ s.id }}">
+
+                <input type="file" name="file" required>
+
+                <button type="submit">
+                    {% if s.id in uploaded_students %}
+                    Replace
+                    {% else %}
+                    Upload
+                    {% endif %}
+                </button>
+            </form>
+        </td>
+
+    </tr>
+
+    {% endfor %}
+
+</table>
 
 <br>
-
 <a href="/invigilator_exams">Back</a>
 
 {% endblock %}

@@ -186,6 +186,7 @@ def add_column_if_not_exists(cursor, table, column_def):
 add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
+add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "users", "reset_token TEXT")
 
 
@@ -224,4 +225,4 @@ cursor.execute("INSERT OR IGNORE INTO exams VALUES (5,'Viva')")
 conn.commit()
 conn.close()
 
-print("Database created successfully with AA NEW sample data")
+print("Database created successfully with AAA NEW sample data")

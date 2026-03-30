@@ -781,25 +781,78 @@ def upload_answer():
 
     assignment_id = request.args.get("assignment_id")
 
-    students = conn.execute("SELECT * FROM students").fetchall()
+    # 🔥 Get assignment details
+    assignment = conn.execute("""
+        SELECT * FROM exam_assignments WHERE id=?
+    """, (assignment_id,)).fetchone()
 
+    if not assignment:
+        conn.close()
+        flash("Invalid assignment")
+        return redirect("/invigilator_dashboard")
+
+    # ✅ FILTER STUDENTS (IMPORTANT FIX)
+    students = conn.execute("""
+        SELECT * FROM students
+        WHERE department=? AND year=?
+    """, (assignment["department"], assignment["year"])).fetchall()
+
+    # ✅ GET UPLOADED STUDENTS
+    answers = conn.execute("""
+        SELECT student_id FROM student_answers
+        WHERE exam_id=? AND course_id=?
+    """, (assignment["exam_id"], assignment["course_id"])).fetchall()
+
+    uploaded_students = [a["student_id"] for a in answers]
+
+    # -------------------------
+    # POST (UPLOAD)
+    # -------------------------
     if request.method == "POST":
-        exam_id = request.files["exam_id"]
-        course_id = request.form["course_id"]
-        assignment_id = request.form["assignment_id"]
-        student_id = request.form["student_id"]
-        file = request.files["file"]
 
+        student_id = request.form["student_id"]
+        file = request.files.get("file")
+
+        if not file:
+            flash("No file uploaded")
+            return redirect(request.url)
+
+        # 🔥 SAVE FILE
+        import uuid
         folder = "uploads/student_answers"
         os.makedirs(folder, exist_ok=True)
 
-        path = os.path.join(folder, file.filename)
+        filename = str(uuid.uuid4()) + "_" + file.filename
+        path = os.path.join(folder, filename)
         file.save(path)
 
-        conn.execute("""
-        (student_id, course_id, exam_id, file_path, assignment_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (student_id,course_id,exam_id, path, assignment_id))
+        # 🔥 CHECK EXISTING (PREVENT DUPLICATE)
+        existing = conn.execute("""
+            SELECT * FROM student_answers
+            WHERE student_id=? AND exam_id=? AND course_id=?
+        """, (
+            student_id,
+            assignment["exam_id"],
+            assignment["course_id"]
+        )).fetchone()
+
+        if existing:
+            conn.execute("""
+                UPDATE student_answers
+                SET file_path=?
+                WHERE id=?
+            """, (path, existing["id"]))
+        else:
+            conn.execute("""
+                INSERT INTO student_answers
+                (student_id, course_id, exam_id, file_path)
+                VALUES (?, ?, ?, ?)
+            """, (
+                student_id,
+                assignment["course_id"],
+                assignment["exam_id"],
+                path
+            ))
 
         log_activity(conn, session["user_id"],
                      "Upload Answer",
@@ -808,14 +861,16 @@ def upload_answer():
         conn.commit()
         conn.close()
 
-        return redirect("/invigilator_dashboard")
+        flash("Upload successful")
+        return redirect(f"/upload_answer?assignment_id={assignment_id}")
 
     conn.close()
 
     return render_template(
         "invigilator/upload_answer.html",
-        assignment_id=assignment_id,
-        students=students
+        assignment=assignment,
+        students=students,
+        uploaded_students=uploaded_students
     )
 #=============== manage exam ===========
 
@@ -1029,15 +1084,17 @@ def bulk_upload_students():
         conn.close()
 
     return redirect("/view_students")
+
 #==================register 
 
 @app.route("/register", methods=["POST"])
 def register():
 
-    name = request.form["name"]
+    full_name = request.form["name"]
     email = request.form["email"]
     mobile = request.form["mobile"]
     department = request.form["department"]
+    subjects = request.form["subjects"]
     course_codes = request.form.get("course_codes", "")
     address = request.form["address"]
     role = request.form["role"]
@@ -1059,16 +1116,16 @@ def register():
         if role == "faculty":
             conn.execute("""
             INSERT INTO pending_faculty
-            (username,email,mobile,department,subjects,course_codes,address)
+            (full_name,email,mobile,department,subjects,course_codes,address)
             VALUES (?,?,?,?,?,?,?)
-            """, (name, email, mobile, department, course_codes, course_codes, address))
+            """, (full_name, email, mobile, department, subjects, course_codes, address))
 
         elif role == "invigilator":
             conn.execute("""
             INSERT INTO pending_invigilator
-            (username,email,mobile,department,address)
+            (full_name,email,mobile,department,address)
             VALUES (?,?,?,?,?)
-            """, (name, email, mobile, department, address))
+            """, (full_name, email, mobile, department, address))
 
         conn.commit()
 
@@ -1270,6 +1327,7 @@ def approve_invigilator(id):
 #===================================
 
 @app.route("/reject_faculty/<int:id>")
+@admin_required
 def reject_faculty(id):
     conn = get_db_connection()
     conn.execute("DELETE FROM pending_faculty WHERE id=?", (id,))
@@ -1277,8 +1335,8 @@ def reject_faculty(id):
     conn.close()
     return redirect("/pending_requests")
 
-
 @app.route("/reject_invigilator/<int:id>")
+@admin_required
 def reject_invigilator(id):
     conn = get_db_connection()
     conn.execute("DELETE FROM pending_invigilator WHERE id=?", (id,))
@@ -1287,55 +1345,6 @@ def reject_invigilator(id):
     return redirect("/pending_requests")
 
 #====================================
-
-@app.route("/pending_users")
-@admin_required
-def pending_users():
-
-    conn = get_db_connection()
-
-    users = conn.execute("""
-        SELECT * FROM users WHERE is_approved='0'
-    """).fetchall()
-
-    conn.close()
-
-    return render_template("admin/pending_users.html", users=users)
-
-#====================================
-
-@app.route("/approve_user/<int:user_id>")
-@admin_required
-def approve_user(user_id):
-
-    conn = get_db_connection()
-
-    conn.execute("""
-        UPDATE users SET is_approved='1' WHERE id=?
-    """, (user_id,))
-    
-
-    conn.commit()
-    conn.close()
-
-    return redirect("/pending_users")
-
-#====================================
-
-@app.route("/reject_user/<int:user_id>")
-@admin_required
-def reject_user(user_id):
-
-    conn = get_db_connection()
-
-    conn.execute("""
-        DELETE FROM users WHERE id=?
-    """, (user_id,))
-
-    conn.commit()
-    conn.close()
-
-    return redirect("/pending_users")
 
 @app.route("/change_password", methods=["GET", "POST"])
 def change_password():
