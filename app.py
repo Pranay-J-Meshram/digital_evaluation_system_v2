@@ -187,10 +187,8 @@ def admin_dashboard():
 # ================= FACULTY DASHBOARD =================
 
 @app.route("/faculty_dashboard")
+@faculty_required
 def faculty_dashboard():
-
-    if session.get("role") != "faculty":
-        return redirect("/")
 
     assignment_id = request.args.get("assignment_id")
 
