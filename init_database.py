@@ -137,11 +137,18 @@ file_path TEXT
 # EVALUATION TABLE
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS evaluation (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-student_answer_id INTEGER,
-marks INTEGER,
-comments TEXT,
-evaluator_id INTEGER
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    student_answer_id INTEGER,
+    assignment_id INTEGER,
+
+    q1a REAL, q1b REAL, q1c REAL, q1d REAL, q1e REAL, q1f REAL,
+    q2a REAL, q2b REAL, q2c REAL,
+    q3a REAL, q3b REAL, q3c REAL,
+
+    total REAL,
+    comments TEXT,
+    evaluator_id INTEGER
 )
 """)
 
@@ -186,10 +193,7 @@ def add_column_if_not_exists(cursor, table, column_def):
 add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
-add_column_if_not_exists(cursor, "student_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "users", "reset_token TEXT")
-
-
 
 #---------------
 #---------------
@@ -225,4 +229,4 @@ cursor.execute("INSERT OR IGNORE INTO exams VALUES (5,'Viva')")
 conn.commit()
 conn.close()
 
-print("Database created successfully with AAA NEW sample data")
+print("Database created successfully with AAAAA NEW sample data")

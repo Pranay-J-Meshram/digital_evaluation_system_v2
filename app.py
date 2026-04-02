@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from werkzeug.security import generate_password_hash, check_password_hash
 import io
 from openpyxl import load_workbook
+import uuid
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -602,12 +604,18 @@ def delete_exam(id):
 
     conn = get_db_connection()
 
+    # ❗ First delete dependent data (IMPORTANT)
+    conn.execute("DELETE FROM student_answers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM question_papers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM model_answers WHERE assignment_id=?", (id,))
     conn.execute("DELETE FROM exam_assignments WHERE id=?", (id,))
-
+    
     log_activity(conn, session["user_id"], "Delete Exam", f"ID {id}")
 
     conn.commit()
     conn.close()
+
+    flash("🗑️ Exam deleted successfully!", "success")
 
     return redirect("/admin_dashboard")
 
@@ -691,29 +699,52 @@ def invigilator_exams():
     return render_template("invigilator/exams.html", exams=exams)
 
 # ================= UPLOAD QUESTION =================
+
 @app.route("/upload_question", methods=["GET", "POST"])
 @invigilator_required
 def upload_question():
 
     conn = get_db_connection()
-
     assignment_id = request.args.get("assignment_id")
+
+    # 🔥 Get assignment (to fetch course_id + exam_id)
+    assignment = conn.execute("""
+        SELECT * FROM exam_assignments WHERE id=?
+    """, (assignment_id,)).fetchone()
+
+    if not assignment:
+        conn.close()
+        flash("Invalid assignment")
+        return redirect("/invigilator_dashboard")
 
     if request.method == "POST":
 
-        assignment_id = request.form["assignment_id"]
-        file = request.files["file"]
+        file = request.files.get("file")
+
+        if not file:
+            flash("No file selected")
+            return redirect(request.url)
+
+        filename = str(uuid.uuid4()) + "_" + secure_filename(file.filename)
 
         folder = "uploads/question_papers"
         os.makedirs(folder, exist_ok=True)
 
-        path = os.path.join(folder, file.filename)
-        file.save(path)
+        full_path = os.path.join(folder, filename)
+        file.save(full_path)
+
+        # ✅ STORE CLEAN PATH (NO uploads/)
+        db_path = f"question_papers/{filename}"
 
         conn.execute("""
-        INSERT INTO question_papers (file_path, assignment_id)
-        VALUES (?, ?)
-        """, (path, assignment_id))
+            INSERT INTO question_papers (course_id, exam_id, file_path, assignment_id)
+            VALUES (?, ?, ?, ?)
+        """, (
+            assignment["course_id"],
+            assignment["exam_id"],
+            db_path,
+            assignment_id,
+        ))
 
         log_activity(conn, session["user_id"],
                      "Upload Question", f"Assignment {assignment_id}")
@@ -721,6 +752,7 @@ def upload_question():
         conn.commit()
         conn.close()
 
+        flash("Question Paper Uploaded")
         return redirect("/invigilator_dashboard")
 
     conn.close()
@@ -736,24 +768,46 @@ def upload_question():
 def upload_model_answer():
 
     conn = get_db_connection()
-
     assignment_id = request.args.get("assignment_id")
+
+    assignment = conn.execute("""
+        SELECT * FROM exam_assignments WHERE id=?
+    """, (assignment_id,)).fetchone()
+
+    if not assignment:
+        conn.close()
+        flash("Invalid assignment")
+        return redirect("/invigilator_dashboard")
 
     if request.method == "POST":
 
-        assignment_id = request.form["assignment_id"]
-        file = request.files["file"]
+        file = request.files.get("file")
+
+        if not file:
+            flash("No file selected")
+            return redirect(request.url)
+
+
+        filename = str(uuid.uuid4()) + "_" + secure_filename(file.filename)
 
         folder = "uploads/model_answers"
         os.makedirs(folder, exist_ok=True)
 
-        path = os.path.join(folder, file.filename)
-        file.save(path)
+        full_path = os.path.join(folder, filename)
+        file.save(full_path)
+
+        # ✅ CLEAN PATH
+        db_path = f"model_answers/{filename}"
 
         conn.execute("""
-        INSERT INTO model_answers (file_path, assignment_id)
-        VALUES (?, ?)
-        """, (path, assignment_id))
+            INSERT INTO model_answers (course_id, exam_id, file_path, assignment_id)
+            VALUES (?, ?, ?, ?)
+        """, (
+            assignment["course_id"],
+            assignment["exam_id"],
+            db_path,
+            assignment_id          
+        ))
 
         log_activity(conn, session["user_id"],
                      "Upload Model Answer", f"Assignment {assignment_id}")
@@ -761,6 +815,7 @@ def upload_model_answer():
         conn.commit()
         conn.close()
 
+        flash("Model Answer Uploaded")
         return redirect("/invigilator_dashboard")
 
     conn.close()
@@ -769,6 +824,7 @@ def upload_model_answer():
         "invigilator/upload_model_answer.html",
         assignment_id=assignment_id
     )
+
 # ================= UPLOAD STUDENT ANSWERS =================
 
 @app.route("/upload_answer", methods=["GET", "POST"])
@@ -843,13 +899,14 @@ def upload_answer():
         else:
             conn.execute("""
                 INSERT INTO student_answers
-                (student_id, course_id, exam_id, file_path)
-                VALUES (?, ?, ?, ?)
+                (student_id, course_id, exam_id, file_path, assignment_id)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 student_id,
                 assignment["course_id"],
                 assignment["exam_id"],
-                path
+                path,
+                assignment_id
             ))
 
         log_activity(conn, session["user_id"],
@@ -868,7 +925,8 @@ def upload_answer():
         "invigilator/upload_answer.html",
         assignment=assignment,
         students=students,
-        uploaded_students=uploaded_students
+        uploaded_students=uploaded_students,
+        assignment_id=assignment_id
     )
 #=============== manage exam ===========
 
@@ -923,21 +981,37 @@ def view_answers():
     conn = get_db_connection()
 
     answers = conn.execute("""
-    SELECT sa.id, s.roll_no, s.student_name,
-           sa.file_path, ev.marks
+    SELECT 
+        sa.id,
+        s.roll_no,
+        s.student_name,
+        sa.file_path,
+
+        c.course_name,
+        e.exam_name,
+
+        ev.total   -- ✅ USE TOTAL INSTEAD OF marks
+
     FROM student_answers sa
+
     JOIN students s ON sa.student_id = s.id
+    JOIN exam_assignments ea ON sa.assignment_id = ea.id
+    JOIN courses c ON ea.course_id = c.id
+    JOIN exams e ON ea.exam_id = e.id
+
     LEFT JOIN evaluation ev
-    ON sa.id = ev.student_answer_id
-    WHERE sa.assignment_id=?
+        ON sa.id = ev.student_answer_id
+
+    WHERE sa.assignment_id = ?
     """, (assignment_id,)).fetchall()
 
     conn.close()
 
-    return render_template("faculty/view_student_answers.html",
-                           answers=answers,
-                           assignment_id=assignment_id)
-
+    return render_template(
+        "faculty/view_student_answers.html",
+        answers=answers,
+        assignment_id=assignment_id
+    )
 # ================= EVALUATE =================
 
 @app.route("/evaluate/<int:answer_id>", methods=["GET", "POST"])
@@ -946,58 +1020,115 @@ def evaluate(answer_id):
 
     conn = get_db_connection()
 
-    # Get answer (for assignment_id redirect)
+    # 🔥 GET ANSWER
     answer = conn.execute("""
-    SELECT * FROM student_answers WHERE id=?
+        SELECT * FROM student_answers WHERE id=?
     """, (answer_id,)).fetchone()
 
+    if not answer:
+        conn.close()
+        flash("Answer not found")
+        return redirect("/faculty_tasks")
+
+    assignment_id = answer["assignment_id"]
+
+    # ---------------- POST ----------------
     if request.method == "POST":
 
-        marks = request.form["marks"]
-        comments = request.form["comments"]
+        def get_mark(field):
+            val = request.form.get(field)
+            return float(val) if val else 0
 
-        # 🔥 PREVENT DUPLICATE ENTRY
+        # MARKS
+        q1a = get_mark("q1a"); q1b = get_mark("q1b"); q1c = get_mark("q1c")
+        q1d = get_mark("q1d"); q1e = get_mark("q1e"); q1f = get_mark("q1f")
+
+        q2a = get_mark("q2a"); q2b = get_mark("q2b"); q2c = get_mark("q2c")
+
+        q3a = get_mark("q3a"); q3b = get_mark("q3b"); q3c = get_mark("q3c")
+
+        total = float(request.form.get("total") or 0)
+        comments = request.form.get("comments")
+
         existing = conn.execute("""
-        SELECT * FROM evaluation WHERE student_answer_id=?
+            SELECT * FROM evaluation WHERE student_answer_id=?
         """, (answer_id,)).fetchone()
 
         if existing:
             conn.execute("""
-            UPDATE evaluation
-            SET marks=?, comments=?, evaluator_id=?
-            WHERE student_answer_id=?
-            """, (marks, comments, session["user_id"], answer_id))
+                UPDATE evaluation SET
+                q1a=?, q1b=?, q1c=?, q1d=?, q1e=?, q1f=?,
+                q2a=?, q2b=?, q2c=?,
+                q3a=?, q3b=?, q3c=?,
+                total=?, comments=?, evaluator_id=?
+                WHERE student_answer_id=?
+            """, (
+                q1a,q1b,q1c,q1d,q1e,q1f,
+                q2a,q2b,q2c,
+                q3a,q3b,q3c,
+                total,comments,session["user_id"],
+                answer_id
+            ))
         else:
             conn.execute("""
-            INSERT INTO evaluation (student_answer_id, marks, comments, evaluator_id)
-            VALUES (?, ?, ?, ?)
-            """, (answer_id, marks, comments, session["user_id"]))
-            
-            log_activity(conn, session["user_id"],
-                 "Evaluate Answer",
-                 f"Answer ID {id}, Marks {marks}")
-
+                INSERT INTO evaluation (
+                    student_answer_id, assignment_id,
+                    q1a,q1b,q1c,q1d,q1e,q1f,
+                    q2a,q2b,q2c,
+                    q3a,q3b,q3c,
+                    total,comments,evaluator_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                answer_id, assignment_id,
+                q1a,q1b,q1c,q1d,q1e,q1f,
+                q2a,q2b,q2c,
+                q3a,q3b,q3c,
+                total,comments,session["user_id"]
+            ))
 
         conn.commit()
         conn.close()
 
-        # ✅ Redirect back properly
-        return redirect(f"/view_student_answers?assignment_id={answer['assignment_id']}")
+        flash("Evaluation saved")
+        return redirect(f"/view_student_answers?assignment_id={assignment_id}")
+
+    # ---------------- GET ----------------
 
     data = conn.execute("""
-    SELECT sa.file_path, s.student_name
-    FROM student_answers sa
-    JOIN students s ON sa.student_id = s.id
-    WHERE sa.id=?
+        SELECT sa.file_path, s.student_name
+        FROM student_answers sa
+        JOIN students s ON sa.student_id = s.id
+        WHERE sa.id=?
     """, (answer_id,)).fetchone()
+
+    existing = conn.execute("""
+        SELECT * FROM evaluation WHERE student_answer_id=?
+    """, (answer_id,)).fetchone()
+
+    # 🔥 QUESTION PAPER
+    qp = conn.execute("""
+        SELECT file_path FROM question_papers
+        WHERE assignment_id=?
+        ORDER BY id DESC LIMIT 1
+    """, (assignment_id,)).fetchone()
+
+    # 🔥 MODEL ANSWER
+    ma = conn.execute("""
+        SELECT file_path FROM model_answers
+        WHERE assignment_id=?
+        ORDER BY id DESC LIMIT 1
+    """, (assignment_id,)).fetchone()
 
     conn.close()
 
     return render_template(
         "faculty/evaluate.html",
-        data=data
+        data=data,
+        answer=answer,
+        existing=existing,
+        question_paper=qp["file_path"] if qp else None,
+        model_answer=ma["file_path"] if ma else None
     )
-
 #===============bulk upload =============
 
 @app.route("/bulk_upload_students", methods=["POST"])

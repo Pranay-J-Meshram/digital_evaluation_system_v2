@@ -20,23 +20,19 @@
     <tr>
         <td>{{ a.roll_no }}</td>
         <td>{{ a.student_name }}</td>
-        <td>{{ a.course_code }}</td>
+        <td>{{ a.course_name }}</td>
         <td>{{ a.exam_name }}</td>
 
         <td>
-            {% if a.marks %}
-            <span class="status done">Evaluated</span>
+            {% if a.total %}
+            <span style="color:green;">Evaluated ({{ a.total }})</span>
             {% else %}
-            <span class="status pending">Pending</span>
+            <span style="color:red;">Pending</span>
             {% endif %}
         </td>
 
         <td>
-            {% if not a.marks %}
-            <a href="/evaluate/{{ a.id }}" class="btn">Evaluate</a>
-            {% else %}
-            <span style="color:green;">✔ Done</span>
-            {% endif %}
+            <a href="/evaluate/{{ a.id }}">Evaluate</a>
         </td>
 
     </tr>
