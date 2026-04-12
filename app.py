@@ -297,7 +297,7 @@ def view_students():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    cursor.execute("SELECT DISTINCT department FROM courses")
+    cursor.execute("SELECT DISTINCT department FROM students")
     departments = cursor.fetchall()
 
     students = []
@@ -608,6 +608,7 @@ def delete_exam(id):
     conn.execute("DELETE FROM student_answers WHERE assignment_id=?", (id,))
     conn.execute("DELETE FROM question_papers WHERE assignment_id=?", (id,))
     conn.execute("DELETE FROM model_answers WHERE assignment_id=?", (id,))
+    conn.execute("DELETE FROM evaluation WHERE assignment_id=?", (id,))
     conn.execute("DELETE FROM exam_assignments WHERE id=?", (id,))
     
     log_activity(conn, session["user_id"], "Delete Exam", f"ID {id}")
@@ -1396,7 +1397,7 @@ def approve_faculty(id):
         cursor.execute("DELETE FROM pending_faculty WHERE id=?", (id,))
 
         conn.commit()
-
+    flash("Approval Email has been sent to the faculty.")
     conn.close()
 
     return redirect("/pending_requests")
