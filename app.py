@@ -157,11 +157,18 @@ def admin_dashboard():
     pending = total_answers - evaluated
 
     assignments = conn.execute("""
-        SELECT ea.*, c.course_name, e.exam_name, u.username
-        FROM exam_assignments ea
-        JOIN courses c ON ea.course_id = c.id
-        JOIN exams e ON ea.exam_id = e.id
-        LEFT JOIN users u ON ea.assigned_faculty = u.id
+    SELECT ea.*, 
+        c.course_name, 
+        e.exam_name,
+        f.username AS faculty_name,
+        i.username AS invigilator_name
+
+    FROM exam_assignments ea
+    JOIN courses c ON ea.course_id = c.id
+    JOIN exams e ON ea.exam_id = e.id
+
+    LEFT JOIN users f ON ea.assigned_faculty = f.id
+    LEFT JOIN users i ON ea.assigned_invigilator = i.id
     """).fetchall()
     logs = conn.execute("""
         SELECT activity_logs.*, users.username
@@ -252,28 +259,38 @@ def faculty_dashboard():
 @invigilator_required
 def invigilator_dashboard():
 
+    invigilator_id = session.get("user_id")
+
     conn = get_db_connection()
 
     answers = conn.execute("""
     SELECT 
-        student_answers.id,
-        students.roll_no,
-        students.student_name,
-        courses.course_code,
-        exams.exam_name,
-        student_answers.file_path
-    FROM student_answers
-    JOIN students ON student_answers.student_id = students.id
-    JOIN courses ON student_answers.course_id = courses.id
-    JOIN exams ON student_answers.exam_id = exams.id
-    """).fetchall()
+        sa.id,
+        s.roll_no,
+        s.student_name,
+        c.course_code,
+        e.exam_name,
+        sa.file_path
+
+    FROM student_answers sa
+
+    JOIN students s ON sa.student_id = s.id
+    JOIN courses c ON sa.course_id = c.id
+    JOIN exams e ON sa.exam_id = e.id
+
+    JOIN exam_assignments ea 
+        ON sa.assignment_id = ea.id
+
+    WHERE ea.assigned_invigilator = ?
+
+    """, (invigilator_id,)).fetchall()
 
     conn.close()
 
     return render_template(
         "invigilator/invigilator_dashboard.html",
         answers=answers
-    ) 
+    )
 #=================viwe usres ==================
 
 @app.route("/view_users")
@@ -686,6 +703,8 @@ def faculty_tasks():
 @invigilator_required
 def invigilator_exams():
 
+    invigilator_id = session.get("user_id")
+
     conn = get_db_connection()
 
     exams = conn.execute("""
@@ -693,11 +712,82 @@ def invigilator_exams():
     FROM exam_assignments ea
     JOIN courses c ON ea.course_id = c.id
     JOIN exams e ON ea.exam_id = e.id
-    """).fetchall()
+    WHERE ea.assigned_invigilator = ?
+    """, (invigilator_id,)).fetchall()
 
     conn.close()
 
     return render_template("invigilator/exams.html", exams=exams)
+
+#=====================================================
+
+@app.route("/assign_invigilator/<int:assignment_id>", methods=["GET", "POST"])
+@admin_required
+def assign_invigilator(assignment_id):
+
+    conn = get_db_connection()
+
+    # ✅ Check assignment exists
+    assignment = conn.execute(
+        "SELECT * FROM exam_assignments WHERE id = ?",
+        (assignment_id,)
+    ).fetchone()
+    
+    if not assignment:
+        conn.close()
+        flash("Invalid assignment ID", "error")
+        return redirect("/admin_dashboard")
+
+    if request.method == "POST":
+
+        invigilator_id = request.form.get("invigilator_id")
+
+        # ✅ Validate input
+        if not invigilator_id:
+            flash("Please select an invigilator", "error")
+            return redirect(f"/assign_invigilator/{assignment_id}")
+
+        # ✅ Verify invigilator exists & is valid
+        invigilator = conn.execute("""
+            SELECT id FROM users 
+            WHERE id = ? 
+            AND role = 'invigilator' 
+            AND is_approved = 1
+        """, (invigilator_id,)).fetchone()
+
+        if not invigilator:
+            flash("Invalid invigilator selected", "error")
+            return redirect(f"/assign_invigilator/{assignment_id}")
+
+        # ✅ Update assignment
+        conn.execute("""
+            UPDATE exam_assignments
+            SET assigned_invigilator = ?
+            WHERE id = ?
+        """, (invigilator_id, assignment_id))
+
+        conn.commit()
+        conn.close()
+
+        flash("Invigilator assigned successfully", "success")
+        return redirect("/admin_dashboard")
+
+    # ✅ Fetch approved invigilators
+    invigilators = conn.execute("""
+        SELECT id, username 
+        FROM users 
+        WHERE role = 'invigilator' 
+        AND is_approved = 1
+        ORDER BY username ASC
+    """).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "admin/assign_invigilator.html",
+        invigilators=invigilators,
+        assignment_id=assignment_id
+    )
 
 # ================= UPLOAD QUESTION =================
 

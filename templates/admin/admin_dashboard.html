@@ -35,63 +35,83 @@
 <!-- 🔥 NEW: EXAM ASSIGNMENTS TABLE -->
 <h3>Exam Management</h3>
 
-<table class="table">
+<table class="table table-bordered text-center">
 
-    <tr>
-        <th>Dept</th>
-        <th>Year</th>
-        <th>Course</th>
-        <th>Exam</th>
-        <th>Status</th>
-        <th>Faculty</th>
-        <th>Action</th>
-    </tr>
+    <thead class="table-dark">
+        <tr>
+            <th>Dept</th>
+            <th>Year</th>
+            <th>Course</th>
+            <th>Exam</th>
+            <th>Status</th>
+            <th>Faculty</th>
+            <th>Invigilator</th>
+            <th>Action</th>
+        </tr>
+    </thead>
 
-    {% for exam in assignments %}
+    <tbody>
 
-    <tr>
-        <td>{{ exam.department }}</td>
-        <td>{{ exam.year }}</td>
-        <td>{{ exam.course_name }}</td>
-        <td>{{ exam.exam_name }}</td>
+        {% for exam in assignments %}
 
-        <!-- STATUS -->
-        <td>
-            {% if exam.assigned_faculty %}
-            <span style="color:green;">Assigned</span>
-            {% else %}
-            <span style="color:red;">Not Assigned</span>
-            {% endif %}
-        </td>
+        <tr>
+            <td>{{ exam.department }}</td>
+            <td>{{ exam.year }}</td>
+            <td>{{ exam.course_name }}</td>
+            <td>{{ exam.exam_name }}</td>
 
-        <!-- FACULTY -->
-        <td>
-            {% if exam.username %}
-            {{ exam.username }}
-            {% else %}
-            —
-            {% endif %}
-        </td>
+            <!-- ✅ STATUS (SMART LOGIC) -->
+            <td>
+                {% if exam.faculty_name and exam.invigilator_name %}
+                <span style="color:green; font-weight:bold;">Fully Assigned</span>
+                {% elif exam.faculty_name %}
+                <span style="color:orange;">Faculty Assigned</span>
+                {% else %}
+                <span style="color:red;">Not Assigned</span>
+                {% endif %}
+            </td>
 
-        <!-- ACTION -->
-        <td>
+            <!-- ✅ FACULTY NAME -->
+            <td>
+                {% if exam.faculty_name %}
+                <span style="color:green;">{{ exam.faculty_name }}</span>
+                {% else %}
+                <span style="color:red;">Not Assigned</span>
+                {% endif %}
+            </td>
 
-            <!-- ASSIGN BUTTON -->
-            <a href="/assign_faculty/{{ exam.id }}">Assign</a>
+            <!-- ✅ INVIGILATOR NAME -->
+            <td>
+                {% if exam.invigilator_name %}
+                <span style="color:green;">{{ exam.invigilator_name }}</span>
+                {% else %}
+                <span style="color:red;">Not Assigned</span>
+                {% endif %}
+            </td>
 
-            |
+            <!-- ✅ ACTIONS -->
+            <td>
 
-            <!-- DELETE BUTTON -->
-            <a href="/delete_exam/{{ exam.id }}" onclick="return confirm('Are you sure you want to delete this exam?')"
-                style="color:red;">
-                Delete
-            </a>
+                <a href="/assign_faculty/{{ exam.id }}" class="btn btn-primary btn-sm">
+                    Faculty
+                </a>
 
-        </td>
+                <a href="/assign_invigilator/{{ exam.id }}" class="btn btn-warning btn-sm">
+                    Invigilator
+                </a>
 
-    </tr>
+                <a href="/delete_exam/{{ exam.id }}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure?')">
+                    Delete
+                </a>
 
-    {% endfor %}
+            </td>
+
+        </tr>
+
+        {% endfor %}
+
+    </tbody>
 
 </table>
 
