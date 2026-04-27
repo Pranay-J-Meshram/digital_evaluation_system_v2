@@ -1,4 +1,4 @@
-from flask import Flask, flash, render_template, request, redirect, session,send_from_directory, url_for
+from flask import Flask, render_template, request, redirect,send_from_directory, url_for, session, flash, jsonify, send_file
 import sqlite3, os
 import pandas as pd
 import csv, re
@@ -11,9 +11,17 @@ import io
 from openpyxl import load_workbook
 import uuid
 from werkzeug.utils import secure_filename
+from reportlab.platypus import SimpleDocTemplate, Table
+from reportlab.lib import colors
+
+
+
+
 
 app = Flask(__name__)
 app.secret_key = "secret123"
+
+
 
 # ================= DB CONNECTION =================
 def get_db_connection():
@@ -65,9 +73,7 @@ def login():
 
     conn = get_db_connection()
 
-    # ----------------------------
-    # BUILD SUBJECT MAPPING
-    # ----------------------------
+    # ---------------- SUBJECT MAP ----------------
     subjects_by_dept = {}
     departments_set = set()
 
@@ -77,63 +83,54 @@ def login():
         dept = c["department"]
         departments_set.add(dept)
 
-        if dept not in subjects_by_dept:
-            subjects_by_dept[dept] = []
-
-        subjects_by_dept[dept].append({
+        subjects_by_dept.setdefault(dept, []).append({
             "name": c["course_name"],
             "code": c["course_code"]
         })
 
-    # Convert departments to list
     departments = [{"department": d} for d in departments_set]
 
-    # ----------------------------
-    # LOGIN LOGIC
-    # ----------------------------
+    # ---------------- LOGIN ----------------
     if request.method == "POST":
 
-        username = request.form["username"]
-        password = request.form["password"]
-        
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        if not username or not password:
+            flash("All fields are required", "error")
+            return redirect(url_for("login"))
 
         user = conn.execute("""
-        SELECT * FROM users 
-        WHERE (username=? OR email=?) AND is_approved=1
+            SELECT * FROM users 
+            WHERE (username=? OR email=?) AND is_approved=1
         """, (username, username)).fetchone()
 
         if not user:
-            conn.close()
-            flash("Invalid credentials or not approved yet")
-            return redirect("/")
+            flash("Invalid credentials or not approved", "error")
+            return redirect(url_for("login"))
 
         if not check_password_hash(user["password"], password):
-            conn.close()
-            flash("Incorrect password")
-            return redirect("/")
+            flash("Incorrect password", "error")
+            return redirect(url_for("login"))
 
         # SESSION
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         session["role"] = user["role"]
 
-        # Force password change
+        flash("Login successful!", "success")
+
         if user["must_change_password"] == 1:
-            return redirect("/change_password")
+            return redirect(url_for("change_password"))
 
-        # Auto redirect
         if user["role"] == "admin":
-            return redirect("/admin_dashboard")
-
+            return redirect(url_for("admin_dashboard"))
         elif user["role"] == "faculty":
-            return redirect("/faculty_dashboard")
-
+            return redirect(url_for("faculty_dashboard"))
         elif user["role"] == "invigilator":
-            return redirect("/invigilator_dashboard")
-        
+            return redirect(url_for("invigilator_dashboard"))
 
-        conn.close()
-       
+    conn.close()
 
     return render_template(
         "login.html",
@@ -157,19 +154,19 @@ def admin_dashboard():
     pending = total_answers - evaluated
 
     assignments = conn.execute("""
-    SELECT ea.*, 
-        c.course_name, 
-        e.exam_name,
-        f.username AS faculty_name,
-        i.username AS invigilator_name
+SELECT ea.*, 
+       c.course_name, 
+       e.exam_name,
+       f.username AS faculty_name,
+       i.username AS invigilator_name
 
-    FROM exam_assignments ea
-    JOIN courses c ON ea.course_id = c.id
-    JOIN exams e ON ea.exam_id = e.id
+FROM exam_assignments ea
+JOIN courses c ON ea.course_id = c.id
+JOIN exams e ON ea.exam_id = e.id
 
-    LEFT JOIN users f ON ea.assigned_faculty = f.id
-    LEFT JOIN users i ON ea.assigned_invigilator = i.id
-    """).fetchall()
+LEFT JOIN users f ON ea.assigned_faculty = f.id
+LEFT JOIN users i ON ea.assigned_invigilator = i.id
+""").fetchall()
     logs = conn.execute("""
         SELECT activity_logs.*, users.username
         FROM activity_logs
@@ -259,38 +256,28 @@ def faculty_dashboard():
 @invigilator_required
 def invigilator_dashboard():
 
-    invigilator_id = session.get("user_id")
-
     conn = get_db_connection()
 
     answers = conn.execute("""
     SELECT 
-        sa.id,
-        s.roll_no,
-        s.student_name,
-        c.course_code,
-        e.exam_name,
-        sa.file_path
-
-    FROM student_answers sa
-
-    JOIN students s ON sa.student_id = s.id
-    JOIN courses c ON sa.course_id = c.id
-    JOIN exams e ON sa.exam_id = e.id
-
-    JOIN exam_assignments ea 
-        ON sa.assignment_id = ea.id
-
-    WHERE ea.assigned_invigilator = ?
-
-    """, (invigilator_id,)).fetchall()
+        student_answers.id,
+        students.roll_no,
+        students.student_name,
+        courses.course_code,
+        exams.exam_name,
+        student_answers.file_path
+    FROM student_answers
+    JOIN students ON student_answers.student_id = students.id
+    JOIN courses ON student_answers.course_id = courses.id
+    JOIN exams ON student_answers.exam_id = exams.id
+    """).fetchall()
 
     conn.close()
 
     return render_template(
         "invigilator/invigilator_dashboard.html",
         answers=answers
-    )
+    ) 
 #=================viwe usres ==================
 
 @app.route("/view_users")
@@ -306,38 +293,65 @@ def view_users():
 
     return render_template("admin/view_users.html", users=users)
 
+#=================================================
+@app.route("/delete_user/<int:user_id>", methods=["POST"])
+@admin_required
+def delete_user(user_id):
+
+    conn = get_db_connection()
+
+    user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+    if not user:
+        conn.close()
+        flash("User not found", "error")
+        return redirect("/view_users")
+
+    # Prevent admin deleting themselves (optional safety)
+    if user_id == session.get("user_id"):
+        conn.close()
+        flash("You cannot delete yourself", "error")
+        return redirect("/view_users")
+
+    conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    flash("User deleted successfully", "success")
+    return redirect("/view_users")
+
 #================= view students ================
 
-@app.route("/view_students", methods=["GET", "POST"])
+@app.route("/view_students")
+@admin_required
 def view_students():
 
     conn = sqlite3.connect("database.db")
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
+    # dropdown data
     cursor.execute("SELECT DISTINCT department FROM students")
     departments = cursor.fetchall()
 
+    department = request.args.get("department")
+    year = request.args.get("year")
+
     students = []
 
-    if request.method == "POST":
+    if department:
 
-        department = request.form.get("department")
-        year = request.form.get("year")
-
-        if year == "all":
-
+        if year == "all" or not year:
             cursor.execute("""
-            SELECT * FROM students
-            WHERE department=?
-            ORDER BY year, roll_no
+                SELECT * FROM students
+                WHERE department=?
+                ORDER BY year, roll_no
             """, (department,))
-
         else:
-
             cursor.execute("""
-            SELECT * FROM students
-            WHERE department=? AND year=?
-            ORDER BY roll_no
+                SELECT * FROM students
+                WHERE department=? AND year=?
+                ORDER BY roll_no
             """, (department, year))
 
         students = cursor.fetchall()
@@ -347,7 +361,9 @@ def view_students():
     return render_template(
         "admin/view_students.html",
         departments=departments,
-        students=students
+        students=students,
+        selected_department=department,
+        selected_year=year
     )
 #===================  edit student ================
 
@@ -359,7 +375,6 @@ def edit_student(id):
 
     if request.method == "POST":
 
-        
         name = request.form["student_name"]
         dept = request.form["department"]
         year = request.form["year"]
@@ -372,12 +387,13 @@ def edit_student(id):
 
         log_activity(conn, session["user_id"], "Edit Student", f"{name} -> {dept} -> {year}")
 
-        flash("Exam created successfully!", "success")
-
         conn.commit()
         conn.close()
 
-        return redirect("/view_students")
+        flash("Student updated successfully!", "success")
+
+        # 🔥 KEEP FILTERS
+        return redirect(f"/view_students?department={dept}&year={year}")
 
     student = conn.execute(
         "SELECT * FROM students WHERE id=?", (id,)
@@ -395,6 +411,12 @@ def delete_student(id):
 
     conn = get_db_connection()
 
+    # 🔥 get student before delete (to keep filters)
+    student = conn.execute(
+        "SELECT department, year FROM students WHERE id=?",
+        (id,)
+    ).fetchone()
+
     conn.execute("DELETE FROM students WHERE id=?", (id,))
 
     log_activity(conn, session["user_id"], "Delete Student", f"ID {id}")
@@ -402,8 +424,13 @@ def delete_student(id):
     conn.commit()
     conn.close()
 
-    return redirect("/view_students")
+    flash("Student deleted successfully!", "success")
 
+    if student:
+        return redirect(f"/view_students?department={student['department']}&year={student['year']}")
+    else:
+        return redirect("/view_students")
+    
 #================= view exams ===================
 
 @app.route("/view_exams")
@@ -500,6 +527,7 @@ def delete_course(id):
 
     conn.execute("DELETE FROM courses WHERE id=?", (id,))
     conn.commit()
+    flash("Course deleted successfully!")
 
     conn.close()
 
@@ -542,34 +570,82 @@ def edit_course(id):
 @admin_required
 def bulk_upload_courses():
 
-    file = request.files["file"]
+    file = request.files.get("file")
 
-    if not file:
-        flash("No file uploaded")
+    if not file or file.filename == "":
+        flash("No file selected", "error")
         return redirect("/manage_courses")
+
+    filename = file.filename.lower()
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    csv_file = csv.reader(file.stream.read().decode("utf-8").splitlines())
+    inserted = 0
+    skipped = 0
 
-    next(csv_file)  # skip header
+    try:
 
-    for row in csv_file:
-        course_name, course_code, department = row
+        # ================= CSV =================
+        if filename.endswith(".csv"):
 
-        try:
-            cursor.execute("""
-            INSERT INTO courses (course_name, course_code, department)
-            VALUES (?, ?, ?)
-            """, (course_name, course_code, department))
-        except:
-            pass  # skip duplicates
+            stream = file.stream.read().decode("utf-8").splitlines()
+            csv_file = csv.reader(stream)
 
-    conn.commit()
-    conn.close()
+            next(csv_file, None)  # skip header
 
-    flash("Courses uploaded successfully!")
+            for row in csv_file:
+                if len(row) < 3:
+                    skipped += 1
+                    continue
+
+                course_name, course_code, department = row
+
+                try:
+                    cursor.execute("""
+                        INSERT INTO courses (course_name, course_code, department)
+                        VALUES (?, ?, ?)
+                    """, (course_name.strip(), course_code.strip(), department.strip()))
+                    inserted += 1
+                except:
+                    skipped += 1
+
+        # ================= XLSX =================
+        elif filename.endswith(".xlsx"):
+
+            df = pd.read_excel(file)
+
+            for _, row in df.iterrows():
+
+                try:
+                    course_name = str(row[0]).strip()
+                    course_code = str(row[1]).strip()
+                    department = str(row[2]).strip()
+
+                    cursor.execute("""
+                        INSERT INTO courses (course_name, course_code, department)
+                        VALUES (?, ?, ?)
+                    """, (course_name, course_code, department))
+
+                    inserted += 1
+
+                except:
+                    skipped += 1
+
+        else:
+            flash("Only CSV or XLSX files allowed!", "error")
+            conn.close()
+            return redirect("/manage_courses")
+
+        conn.commit()
+        conn.close()
+
+        flash(f"Upload Complete: {inserted} added, {skipped} skipped", "success")
+
+    except Exception as e:
+        conn.close()
+        flash(f"Error: {str(e)}", "error")
+
     return redirect("/manage_courses")
 
 # ================= CREATE EXAM =================
@@ -703,8 +779,6 @@ def faculty_tasks():
 @invigilator_required
 def invigilator_exams():
 
-    invigilator_id = session.get("user_id")
-
     conn = get_db_connection()
 
     exams = conn.execute("""
@@ -712,8 +786,7 @@ def invigilator_exams():
     FROM exam_assignments ea
     JOIN courses c ON ea.course_id = c.id
     JOIN exams e ON ea.exam_id = e.id
-    WHERE ea.assigned_invigilator = ?
-    """, (invigilator_id,)).fetchall()
+    """).fetchall()
 
     conn.close()
 
@@ -844,7 +917,7 @@ def upload_question():
         conn.close()
 
         flash("Question Paper Uploaded")
-        return redirect("/invigilator_dashboard")
+        return redirect(f"/upload_question?assignment_id={assignment_id}")
 
     conn.close()
 
@@ -907,7 +980,7 @@ def upload_model_answer():
         conn.close()
 
         flash("Model Answer Uploaded")
-        return redirect("/invigilator_dashboard")
+        return redirect(f"/upload_model_answer?assignment_id={assignment_id}")
 
     conn.close()
 
@@ -1033,8 +1106,9 @@ def manage_exam(id):
 def uploaded_file(filename):
     return send_from_directory('uploads', filename)
 
-
 #=============== result ===============================
+
+# ================= RESULT DASHBOARD =================
 
 @app.route("/results_dashboard")
 @admin_required
@@ -1042,24 +1116,267 @@ def results_dashboard():
 
     conn = get_db_connection()
 
-    results = conn.execute("""
-    SELECT
-    students.roll_no,
-    students.student_name,
-    courses.course_code,
-    exams.exam_name,
-    evaluation.marks
-    FROM evaluation
-    JOIN student_answers ON evaluation.student_answer_id = student_answers.id
-    JOIN students ON student_answers.student_id = students.id
-    JOIN courses ON student_answers.course_id = courses.id
-    JOIN exams ON student_answers.exam_id = exams.id
+    assignments = conn.execute("""
+        SELECT ea.id, c.course_name, e.exam_name
+        FROM exam_assignments ea
+        JOIN courses c ON ea.course_id = c.id
+        JOIN exams e ON ea.exam_id = e.id
+        ORDER BY ea.id DESC
     """).fetchall()
 
     conn.close()
 
-    return render_template("admin/results_dashboard.html", results=results)
+    return render_template(
+        "admin/results_dashboard.html",
+        assignments=assignments
+    )
 
+
+# ================= NUMERICAL REPORT =================
+
+@app.route("/numerical_report/<int:assignment_id>")
+@admin_required
+def numerical_report(assignment_id):
+
+    conn = get_db_connection()
+
+    total = conn.execute("""
+        SELECT COUNT(*) FROM student_answers
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchone()[0]
+
+    checked = conn.execute("""
+        SELECT COUNT(*) FROM evaluation
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchone()[0]
+
+    unchecked = total - checked
+
+    avg = conn.execute("""
+        SELECT AVG(total) FROM evaluation
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchone()[0]
+
+    top = conn.execute("""
+        SELECT s.student_name, e.total, sa.id
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE e.assignment_id=?
+        ORDER BY e.total DESC LIMIT 1
+    """, (assignment_id,)).fetchone()
+
+    least = conn.execute("""
+        SELECT s.student_name, e.total, sa.id
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE e.assignment_id=?
+        ORDER BY e.total ASC LIMIT 1
+    """, (assignment_id,)).fetchone()
+
+    top5 = conn.execute("""
+        SELECT s.student_name, e.total, sa.id
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE e.assignment_id=?
+        ORDER BY e.total DESC LIMIT 5
+    """, (assignment_id,)).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        "total": total,
+        "checked": checked,
+        "unchecked": unchecked,
+        "average": round(avg or 0, 2),
+        "top": dict(top) if top else None,
+        "least": dict(least) if least else None,
+        "top5": [dict(x) for x in top5]
+    })
+
+
+# ================= GRAPHICAL REPORT =================
+
+@app.route("/graphical_report/<int:assignment_id>")
+@admin_required
+def graphical_report(assignment_id):
+
+    conn = get_db_connection()
+
+    checked = conn.execute("""
+        SELECT COUNT(*) FROM evaluation
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchone()[0]
+
+    total = conn.execute("""
+        SELECT COUNT(*) FROM student_answers
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchone()[0]
+
+    conn.close()
+
+    return jsonify({
+        "checked": checked,
+        "unchecked": total - checked
+    })
+
+
+# ================= MARKS DISTRIBUTION (OUT OF 30) =================
+
+@app.route("/marks_distribution/<int:assignment_id>")
+@admin_required
+def marks_distribution(assignment_id):
+
+    conn = get_db_connection()
+
+    rows = conn.execute("""
+        SELECT total FROM evaluation
+        WHERE assignment_id=?
+    """, (assignment_id,)).fetchall()
+
+    conn.close()
+
+    ranges = {
+        "0-10": 0,
+        "11-15": 0,
+        "16-20": 0,
+        "21-25": 0,
+        "26-30": 0
+    }
+
+    pass_count = 0
+    fail_count = 0
+
+    for r in rows:
+        m = r["total"] or 0
+
+        if m <= 10:
+            ranges["0-10"] += 1
+            fail_count += 1
+        elif m <= 15:
+            ranges["11-15"] += 1
+            pass_count += 1
+        elif m <= 20:
+            ranges["16-20"] += 1
+            pass_count += 1
+        elif m <= 25:
+            ranges["21-25"] += 1
+            pass_count += 1
+        else:
+            ranges["26-30"] += 1
+            pass_count += 1
+
+    return jsonify({
+        "ranges": ranges,
+        "pass": pass_count,
+        "fail": fail_count
+    })
+
+
+# ================= CLICKABLE STUDENT RESULT =================
+
+@app.route("/student_result/<int:answer_id>")
+@admin_required
+def student_result(answer_id):
+
+    conn = get_db_connection()
+
+    data = conn.execute("""
+        SELECT 
+            s.student_name,
+            s.roll_no,
+            e.total,
+            e.comments
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE sa.id=?
+    """, (answer_id,)).fetchone()
+
+    conn.close()
+
+    return render_template("admin/student_result.html", data=data)
+
+
+# ================= EXPORT PDF =================
+
+@app.route("/export_pdf")
+@admin_required
+def export_pdf():
+
+    assignment_id = request.args.get("assignment_id")
+
+    if not assignment_id:
+        flash("Invalid request")
+        return redirect("/results_dashboard")
+
+    conn = get_db_connection()
+
+    data = conn.execute("""
+        SELECT s.student_name, e.total
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE e.assignment_id=?
+    """, (assignment_id,)).fetchall()
+
+    conn.close()
+
+    os.makedirs("reports", exist_ok=True)
+    file_path = f"reports/report_{assignment_id}.pdf"
+
+    doc = SimpleDocTemplate(file_path)
+
+    table_data = [["Student Name", "Marks"]] + [
+        [row["student_name"], row["total"]] for row in data
+    ]
+
+    table = Table(table_data)
+    table.setStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.grey),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("GRID", (0,0), (-1,-1), 1, colors.black)
+    ])
+
+    doc.build([table])
+
+    return send_file(file_path, as_attachment=True)
+
+
+# ================= EXPORT EXCEL =================
+
+@app.route("/export_excel")
+@admin_required
+def export_excel():
+
+    assignment_id = request.args.get("assignment_id")
+
+    if not assignment_id:
+        flash("Invalid request")
+        return redirect("/results_dashboard")
+
+    conn = get_db_connection()
+
+    data = conn.execute("""
+        SELECT s.student_name, e.total
+        FROM evaluation e
+        JOIN student_answers sa ON e.student_answer_id = sa.id
+        JOIN students s ON sa.student_id = s.id
+        WHERE e.assignment_id=?
+    """, (assignment_id,)).fetchall()
+
+    conn.close()
+
+    df = pd.DataFrame(data, columns=["Student Name", "Marks"])
+
+    os.makedirs("reports", exist_ok=True)
+    file_path = f"reports/report_{assignment_id}.xlsx"
+
+    df.to_excel(file_path, index=False)
+
+    return send_file(file_path, as_attachment=True)
 
 # ================= VIEW ANSWERS =================
 
@@ -1105,20 +1422,21 @@ def view_answers():
     )
 # ================= EVALUATE =================
 
+from datetime import datetime
+
 @app.route("/evaluate/<int:answer_id>", methods=["GET", "POST"])
 @faculty_required
 def evaluate(answer_id):
 
     conn = get_db_connection()
 
-    # 🔥 GET ANSWER
     answer = conn.execute("""
         SELECT * FROM student_answers WHERE id=?
     """, (answer_id,)).fetchone()
 
     if not answer:
         conn.close()
-        flash("Answer not found")
+        flash("Answer not found", "error")
         return redirect("/faculty_tasks")
 
     assignment_id = answer["assignment_id"]
@@ -1126,62 +1444,94 @@ def evaluate(answer_id):
     # ---------------- POST ----------------
     if request.method == "POST":
 
-        def get_mark(field):
+        def get_mark(field, max_val):
             val = request.form.get(field)
-            return float(val) if val else 0
+            try:
+                val = float(val)
+                return val if 0 <= val <= max_val else 0
+            except:
+                return 0
 
         # MARKS
-        q1a = get_mark("q1a"); q1b = get_mark("q1b"); q1c = get_mark("q1c")
-        q1d = get_mark("q1d"); q1e = get_mark("q1e"); q1f = get_mark("q1f")
+        q1a = get_mark("q1a", 2); q1b = get_mark("q1b", 2)
+        q1c = get_mark("q1c", 2); q1d = get_mark("q1d", 2)
+        q1e = get_mark("q1e", 2); q1f = get_mark("q1f", 2)
 
-        q2a = get_mark("q2a"); q2b = get_mark("q2b"); q2c = get_mark("q2c")
+        q2a = get_mark("q2a", 4); q2b = get_mark("q2b", 4); q2c = get_mark("q2c", 4)
+        q3a = get_mark("q3a", 6); q3b = get_mark("q3b", 6); q3c = get_mark("q3c", 6)
 
-        q3a = get_mark("q3a"); q3b = get_mark("q3b"); q3c = get_mark("q3c")
+        # 🔥 SERVER TOTAL
+        def best_of(vals, n):
+            return sum(sorted(vals, reverse=True)[:n])
 
-        total = float(request.form.get("total") or 0)
-        comments = request.form.get("comments")
+        total = (
+            best_of([q1a,q1b,q1c,q1d,q1e,q1f],5) +
+            best_of([q2a,q2b,q2c],2) +
+            best_of([q3a,q3b,q3c],2)
+        )
+
+        comments = request.form.get("comments","")
+        status = request.form.get("status","draft")
 
         existing = conn.execute("""
-            SELECT * FROM evaluation WHERE student_answer_id=?
-        """, (answer_id,)).fetchone()
+            SELECT id FROM evaluation WHERE student_answer_id=?
+        """,(answer_id,)).fetchone()
 
         if existing:
             conn.execute("""
                 UPDATE evaluation SET
-                q1a=?, q1b=?, q1c=?, q1d=?, q1e=?, q1f=?,
-                q2a=?, q2b=?, q2c=?,
-                q3a=?, q3b=?, q3c=?,
-                total=?, comments=?, evaluator_id=?
+                q1a=?,q1b=?,q1c=?,q1d=?,q1e=?,q1f=?,
+                q2a=?,q2b=?,q2c=?,
+                q3a=?,q3b=?,q3c=?,
+                total=?,comments=?,status=?,evaluator_id=?,
+                updated_at=?
                 WHERE student_answer_id=?
-            """, (
+            """,(
                 q1a,q1b,q1c,q1d,q1e,q1f,
                 q2a,q2b,q2c,
                 q3a,q3b,q3c,
-                total,comments,session["user_id"],
+                total,comments,status,session["user_id"],
+                datetime.now(),
                 answer_id
             ))
         else:
             conn.execute("""
                 INSERT INTO evaluation (
-                    student_answer_id, assignment_id,
+                    student_answer_id,assignment_id,
                     q1a,q1b,q1c,q1d,q1e,q1f,
                     q2a,q2b,q2c,
                     q3a,q3b,q3c,
-                    total,comments,evaluator_id
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                answer_id, assignment_id,
+                    total,comments,status,evaluator_id,updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,(
+                answer_id,assignment_id,
                 q1a,q1b,q1c,q1d,q1e,q1f,
                 q2a,q2b,q2c,
                 q3a,q3b,q3c,
-                total,comments,session["user_id"]
+                total,comments,status,session["user_id"],
+                datetime.now()
             ))
 
         conn.commit()
-        conn.close()
 
-        flash("Evaluation saved")
-        return redirect(f"/view_student_answers?assignment_id={assignment_id}")
+        # AUTO NEXT ONLY IF FINAL
+        if status == "submitted":
+            next_ans = conn.execute("""
+                SELECT id FROM student_answers
+                WHERE assignment_id=? AND id>?
+                ORDER BY id LIMIT 1
+            """,(assignment_id,answer_id)).fetchone()
+
+            conn.close()
+            flash("Evaluation submitted", "success")
+
+            if next_ans:
+                return redirect(f"/evaluate/{next_ans['id']}")
+            return redirect(f"/view_student_answers?assignment_id={assignment_id}")
+
+        conn.close()
+        flash("Draft saved", "success")
+        return redirect(f"/evaluate/{answer_id}")
 
     # ---------------- GET ----------------
 
@@ -1190,25 +1540,21 @@ def evaluate(answer_id):
         FROM student_answers sa
         JOIN students s ON sa.student_id = s.id
         WHERE sa.id=?
-    """, (answer_id,)).fetchone()
+    """,(answer_id,)).fetchone()
 
     existing = conn.execute("""
         SELECT * FROM evaluation WHERE student_answer_id=?
-    """, (answer_id,)).fetchone()
+    """,(answer_id,)).fetchone()
 
-    # 🔥 QUESTION PAPER
     qp = conn.execute("""
         SELECT file_path FROM question_papers
-        WHERE assignment_id=?
-        ORDER BY id DESC LIMIT 1
-    """, (assignment_id,)).fetchone()
+        WHERE assignment_id=? ORDER BY id DESC LIMIT 1
+    """,(assignment_id,)).fetchone()
 
-    # 🔥 MODEL ANSWER
     ma = conn.execute("""
         SELECT file_path FROM model_answers
-        WHERE assignment_id=?
-        ORDER BY id DESC LIMIT 1
-    """, (assignment_id,)).fetchone()
+        WHERE assignment_id=? ORDER BY id DESC LIMIT 1
+    """,(assignment_id,)).fetchone()
 
     conn.close()
 
@@ -1218,8 +1564,41 @@ def evaluate(answer_id):
         answer=answer,
         existing=existing,
         question_paper=qp["file_path"] if qp else None,
-        model_answer=ma["file_path"] if ma else None
+        model_answer=ma["file_path"] if ma else None,
+        assignment_id=assignment_id
     )
+
+#=================================
+
+@app.route("/autosave_evaluation/<int:answer_id>", methods=["POST"])
+@faculty_required
+def autosave_evaluation(answer_id):
+
+    conn = get_db_connection()
+
+    form = request.form
+    comments = form.get("comments","")
+
+    existing = conn.execute("""
+        SELECT id FROM evaluation WHERE student_answer_id=?
+    """,(answer_id,)).fetchone()
+
+    if existing:
+        conn.execute("""
+            UPDATE evaluation SET comments=?,status='draft',updated_at=?
+            WHERE student_answer_id=?
+        """,(comments,datetime.now(),answer_id))
+    else:
+        conn.execute("""
+            INSERT INTO evaluation (student_answer_id,comments,status,evaluator_id,updated_at)
+            VALUES (?,?,?,?,?)
+        """,(answer_id,comments,"draft",session["user_id"],datetime.now()))
+
+    conn.commit()
+    conn.close()
+
+    return {"status":"saved"}
+
 #===============bulk upload =============
 
 @app.route("/bulk_upload_students", methods=["POST"])
@@ -1388,8 +1767,8 @@ def generate_password():
 
 #============================
 
-EMAIL_ADDRESS = "kohalerohit38@gmail.com"
-EMAIL_PASSWORD = "bppursgchhmlomky"
+EMAIL_ADDRESS = "desgpn@gmail.com"
+EMAIL_PASSWORD = "qmhmzwwxaatevunm"
 
 def send_email(to, username, password, name):
     subject = "Account Approved"

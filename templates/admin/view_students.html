@@ -18,7 +18,7 @@
 
 <div class="filters">
 
-    <form method="POST">
+    <form method="GET">
 
         <label>Department</label>
 
@@ -26,19 +26,19 @@
             <option value="">Select Department</option>
 
             {% for dept in departments %}
-            <option value="{{ dept[0] }}">{{ dept[0] }}</option>
+            <option value="{{ dept[0] }}" {% if dept[0]==selected_department %}selected{% endif %}>
+                {{ dept[0] }}
+            </option>
             {% endfor %}
-
         </select>
 
         <label>Year</label>
 
-        <select name="year" required>
-            <option value="all">All Years</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
+        <select name="year">
+            <option value="all" {% if selected_year=="all" %}selected{% endif %}>All Years</option>
+            <option value="1" {% if selected_year=="1" %}selected{% endif %}>1</option>
+            <option value="2" {% if selected_year=="2" %}selected{% endif %}>2</option>
+            <option value="3" {% if selected_year=="3" %}selected{% endif %}>3</option>
         </select>
 
         <button type="submit">Load Students</button>

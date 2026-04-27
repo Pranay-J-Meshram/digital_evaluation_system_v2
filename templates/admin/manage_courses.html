@@ -23,8 +23,8 @@
 <h3>Bulk Upload</h3>
 
 <form method="POST" action="/bulk_upload_courses" enctype="multipart/form-data">
-    <input type="file" name="file" required>
-    <button>Upload CSV</button>
+    <input type="file" name="file" accept=".csv, .xlsx" required>
+    <button>Upload File</button>
 </form>
 
 <br>
@@ -60,7 +60,9 @@
         <td>{{ c.department }}</td>
         <td>
             <a href="/edit_course/{{ c.id }}">Edit</a> |
-            <a href="/delete_course/{{ c.id }}">Delete</a>
+            <a href="/delete_course/{{ c.id }}" class="delete-btn" onclick="return confirm('Delete this course?')">
+                Delete
+            </a>
         </td>
     </tr>
     {% endfor %}

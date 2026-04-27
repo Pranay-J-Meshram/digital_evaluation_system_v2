@@ -10,14 +10,38 @@
         <th>ID</th>
         <th>Username</th>
         <th>Role</th>
+        <th>Action</th>
     </tr>
 
     {% for u in users %}
 
     <tr>
-        <td>{{u['id']}}</td>
-        <td>{{u['username']}}</td>
-        <td>{{u['role']}}</td>
+        <td>{{ u['id'] }}</td>
+        <td>{{ u['username'] }}</td>
+        <td>{{ u['role'] }}</td>
+
+        <td>
+            {% if u['role'] != 'admin' %}
+
+            <!-- ✅ FIXED: POST FORM INSTEAD OF LINK -->
+            <form action="{{ url_for('delete_user', user_id=u['id']) }}" method="POST" style="display:inline;">
+
+                <!-- ✅ CSRF (if enabled) -->
+                {% if csrf_token %}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% endif %}
+
+                <button type="submit" class="delete-btn"
+                    onclick="return confirm('Are you sure you want to delete this user?')">
+                    Delete
+                </button>
+
+            </form>
+
+            {% else %}
+            <span style="color:gray;">Protected</span>
+            {% endif %}
+        </td>
     </tr>
 
     {% endfor %}

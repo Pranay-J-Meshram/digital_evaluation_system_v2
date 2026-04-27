@@ -6,6 +6,54 @@
     <title>Digital Evaluation System</title>
 
     <style>
+        /* 🔥 Flash Popup Center */
+        #flash-popup {
+            position: fixed;
+            top: 150px;
+            /* below header */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+        }
+
+        /* Flash Box */
+        .flash-box {
+            min-width: 300px;
+            max-width: 500px;
+            padding: 12px 20px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            animation: popupFade 0.4s ease;
+        }
+
+        /* Success */
+        .flash-box.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        /* Error */
+        .flash-box.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Animation */
+        @keyframes popupFade {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
         .alert {
             padding: 10px;
             margin: 10px 0;
@@ -125,10 +173,11 @@
         .main-header {
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            /* 🔥 important */
             background: linear-gradient(to right, #2c3e50, #3498db);
             color: rgb(242, 241, 241);
-            padding: 1px 10px;
-            border-radius: 2px;
+            padding: 10px 20px;
         }
 
         .logo {
@@ -323,27 +372,31 @@
 <body>
     <div class="main-header">
 
-        <img src="/static/collage_logo_mordern.png" class="logo">
+        <!-- LEFT SIDE -->
+        <div style="display:flex;align-items:center;gap:15px;">
+            <img src="/static/collage_logo_mordern.png" class="logo">
 
-        <div class="header-text">
+            <div class="header-text">
 
-            <div class="line">
-                <h1>Government Polytechnic, Nagpur</h1>
-                <span class="sub-text">(An Autonomous Institute of Government of Maharashtra)</span>
+                <div class="line">
+                    <h1>Government Polytechnic, Nagpur</h1>
+                    <span class="sub-text">(An Autonomous Institute of Government of Maharashtra)</span>
+                </div>
+
+                <div class="line">
+                    <h2>शासकीय तंत्रनिकेतन, नागपूर</h2>
+                    <span class="sub-text">(महाराष्ट्र शासनाची स्वायत्त संस्था)</span>
+                </div>
+
+                <h4>welcome To</h4>
+                <h3>Digital Evaluation System</h3>
+
             </div>
+        </div>
 
-            <div class="line">
-                <h2>शासकीय तंत्रनिकेतन, नागपूर</h2>
-                <span class="sub-text">(महाराष्ट्र शासनाची स्वायत्त संस्था)</span>
-            </div>
-
-            <h4>welcome To</h4>
-            <h3>Digital Evaluation System</h3>
-
-            <div class="user-info">
-                Logged in as: {{ session.get('role') }}
-            </div>
-
+        <!-- RIGHT SIDE -->
+        <div class="user-info">
+            Logged in as: <b>{{ session.get('role') }}</b>
         </div>
 
     </div>
@@ -360,7 +413,7 @@
             {% if session.get('role') == 'admin' %}
             <h3>Admin Panel</h3>
             <a href="/admin_dashboard">Dashboard</a>
-            <a href="/pending_requests" class="btn btn-warning">Pending Approvals</a>
+            <a href="/pending_requests">Pending Approvals</a>
             <a href="/view_users">Users</a>
             <a href="/view_students">Students</a>
             <a href="/manage_courses">Courses</a>
@@ -372,7 +425,9 @@
             <h3>Faculty Panel</h3>
             <a href="/faculty_dashboard">Dashboard</a>
             <a href="/faculty_tasks">Tasks</a>
-            <a href="/view_student_answers">Evaluate</a>
+
+
+
 
             {% elif session.get('role') == 'invigilator' %}
             <h3>Invigilator Panel</h3>
@@ -380,15 +435,23 @@
             <a href="/invigilator_exams">view exams</a>
             {% endif %}
 
-            <a href="/logout">Logout</a>
+            <a href="/logout" onclick="return confirm('Are you sure you want to Logout ?')" style="color:red;">
+                Logout</a>
 
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
-        <div class="alert {{ category }}">{{ message }}</div>
-        {% endfor %}
-        {% endwith %}
+        <!-- 🔥 FLASH POPUP -->
+        <div id="flash-popup">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="flash-box {{ category }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+        </div>
 
 
         <!-- CONTENT -->
@@ -398,6 +461,20 @@
         </div>
 
     </div>
+
+    <script>
+        setTimeout(() => {
+            const popup = document.getElementById("flash-popup");
+            if (popup) {
+                popup.style.opacity = "0";
+                popup.style.transition = "1.5s";
+
+                setTimeout(() => {
+                    popup.style.display = "none";
+                }, 500);
+            }
+        }, 3000);
+    </script>
 
     <script>
 

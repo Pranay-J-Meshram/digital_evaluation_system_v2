@@ -195,6 +195,8 @@ add_column_if_not_exists(cursor, "question_papers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "model_answers", "assignment_id INTEGER")
 add_column_if_not_exists(cursor, "exam_assignments", "assigned_invigilator INTEGER")
 add_column_if_not_exists(cursor, "users", "reset_token TEXT")
+add_column_if_not_exists(cursor, "evaluation", "status TEXT DEFAULT 'draft'")
+add_column_if_not_exists(cursor, "evaluation", "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
 
 #---------------
 #---------------
@@ -207,15 +209,6 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
-# ---------------------------------------------------
-# PREDEFINED STUDENTS
-# ---------------------------------------------------
-
-cursor.execute("INSERT OR IGNORE INTO students VALUES (1,'CSE001','Rahul Sharma','Computer Engineering','1')")
-cursor.execute("INSERT OR IGNORE INTO students VALUES (2,'CSE002','Priya Singh','Computer Engineering','2')")
-cursor.execute("INSERT OR IGNORE INTO students VALUES (3,'CSE003','Amit Patel','Computer Engineering','3')")
-cursor.execute("INSERT OR IGNORE INTO students VALUES (4,'CSE004','Sneha Verma','Mechanical Engineering','3')")
-cursor.execute("INSERT OR IGNORE INTO students VALUES (5,'CSE005','Arjun Gupta','Electronics Engineering','3')")
 
 # ---------------------------------------------------
 # PREDEFINED EXAMS
@@ -230,4 +223,4 @@ cursor.execute("INSERT OR IGNORE INTO exams VALUES (5,'Viva')")
 conn.commit()
 conn.close()
 
-print("Database created successfully with A NEW sample data")
+print("Database created successfully with AAAA NEW sample data")

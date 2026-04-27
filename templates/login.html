@@ -16,6 +16,32 @@
             margin: 0;
         }
 
+        .flash-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            width: 350px;
+        }
+
+        .flash-container .alert {
+            text-align: center;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .main-card {
             max-width: 1100px;
             margin: 40px auto;
@@ -144,6 +170,16 @@
 
 <body>
 
+    <div class="flash-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'success' if category=='success' else 'danger' }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endwith %}
+    </div>
+
     <div class="container">
         <div class="row main-card">
 
@@ -158,7 +194,12 @@
                 </div>
                 <h6 class="digital-text">Digital Evaluation System</h6>
                 <div class="project-about-container">
-                    <div class="project-about">Developed by Computer Department.</div>
+                    <div class="project-about">Developed by Computer Department "Students"<br>
+                        Pranay Meshram <br>
+                        Shivam Shende <br>
+                        Sharjil Khan <br>
+                        Yogesh Uprikar <br>
+                        Rohit Kohale.</div>
                 </div>
                 <div class="need-help">📞 Need Help?</div>
             </div>
@@ -174,8 +215,11 @@
 
                         <input name="username" class="form-control mb-3" placeholder="Username or Email" required>
 
-                        <input name="password" type="password" class="form-control mb-3" placeholder="Password"
-                            required>
+                        <div class="password-wrapper mb-3">
+                            <input id="password" name="password" type="password" class="form-control"
+                                placeholder="Password" required>
+                            <span class="toggle-password" onclick="togglePassword()">👁️</span>
+                        </div>
 
                         <button class="btn btn-login w-100">Login</button>
 
@@ -246,6 +290,13 @@
 
             </div>
         </div>
+
+        <script>
+            function togglePassword() {
+                let p = document.getElementById("password");
+                p.type = p.type === "password" ? "text" : "password";
+            }
+        </script>
 
         <script>
             function showSignup() {

@@ -2,90 +2,190 @@
 {% block content %}
 
 <style>
-    .toolsPanel {
-        margin-top: 20px;
-        padding: 15px;
-        background: #eee;
-        text-align: center;
+    body {
+        background: #f4f6f9;
     }
 
-    .toolBtn.active {
-        outline: 3px solid black;
-    }
-
-    .container {
+    .eval-wrapper {
         display: flex;
-        gap: 10px;
+        height: 90vh;
+        gap: 12px;
     }
 
     .panel {
-        background: #f5f5f5;
-        padding: 10px;
-        border-radius: 8px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
     }
 
-    /* LEFT */
+    /* ================= LEFT MARKS ================= */
     .marks {
-        width: 20%;
-        max-height: 650px;
-        overflow: auto;
+        width: 22%;
+        padding: 15px;
+        overflow-y: auto;
+        position: sticky;
+        top: 10px;
     }
 
-    /* CENTER */
+    .marks h4 {
+        margin-top: 15px;
+        color: #2c3e50;
+    }
+
+    .marks input {
+        width: 60px;
+        padding: 5px;
+        margin: 4px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+    }
+
+    textarea {
+        width: 100%;
+        height: 80px;
+        border-radius: 6px;
+        padding: 8px;
+    }
+
+    .save-btn {
+        width: 100%;
+        background: #27ae60;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
+
+    .final-btn {
+        width: 100%;
+        background: #e67e22;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-top: 5px;
+    }
+
+    .status-bar {
+        margin-top: 10px;
+        font-size: 13px;
+        color: #555;
+    }
+
+    /* ================= CENTER ANSWER ================= */
     .answer {
-        width: 40%;
+        flex: 1;
         position: relative;
+        transition: 0.3s;
     }
 
     .answer iframe {
         width: 100%;
-        height: 650px;
+        height: 100%;
+        border: none;
+        border-radius: 10px;
+    }
+
+    /* ================= RIGHT PANEL ================= */
+    .side-panel {
+        width: 35%;
+        display: none;
+        flex-direction: column;
+    }
+
+    .side-panel.active {
+        display: flex;
+    }
+
+    iframe.viewer {
+        width: 100%;
+        height: 100%;
         border: none;
     }
 
+    /* ================= TOP BAR ================= */
+    .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .toggle-group button {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 14px;
+        margin-right: 5px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .toggle-group button.active {
+        background: #2ecc71;
+    }
+
+    /* ================= TOOLBOX ================= */
+    .toolbox {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        z-index: 999;
+    }
+
+    .toolbox button {
+        margin: 5px;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .toolBtn.active {
+        background: #2ecc71;
+        color: white;
+    }
+
+    /* ================= OVERLAY ================= */
     #overlay {
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-
         pointer-events: none;
-        /* 🔥 IMPORTANT FIX */
-    }
-
-    /* RIGHT */
-    .qp {
-        width: 40%;
-    }
-
-    .qp iframe {
-        width: 100%;
-        height: 650px;
-        border: none;
-    }
-
-    input {
-        width: 60px;
-        margin: 3px;
-    }
-
-    button {
-        margin: 3px;
-        padding: 6px 10px;
-    }
-
-    .active {
-        border: 2px solid black;
     }
 </style>
 
-<div class="container">
+<!-- ================= TOP BAR ================= -->
+<div class="top-bar">
 
-    <!-- LEFT PANEL -->
+    <h4>Evaluating: {{ data.student_name }}</h4>
+
+    <div class="toggle-group">
+        <button id="btnAnswer" onclick="showAnswer()" class="active">Answer</button>
+        <button id="btnQP" onclick="showQP()">Question Paper</button>
+        <button id="btnMA" onclick="showMA()">Model Answer</button>
+    </div>
+
+</div>
+
+<div class="eval-wrapper">
+
+    <!-- ================= MARKS ================= -->
     <div class="panel marks">
 
         <form method="POST" onsubmit="syncTotal()">
+
+            <input type="hidden" name="status" id="statusField" value="draft">
 
             <h4>Q1 (Best 5 × 2)</h4>
             {% for q in ['a','b','c','d','e','f'] %}
@@ -107,81 +207,100 @@
 
             <hr>
 
-            <b>Total: <span id="total">0</span></b>
+            <h3>Total: <span id="total">0</span></h3>
             <input type="hidden" name="total" id="totalInput">
 
-            <br><br>
             <textarea name="comments" placeholder="Comments">{{ existing.comments if existing else '' }}</textarea>
 
-            <br><br>
-            <button type="submit">💾 Save</button>
+            <button type="submit" class="save-btn" onclick="setDraft()">💾 Save Draft</button>
+            <button type="submit" class="final-btn" onclick="setFinal()">✅ Submit Final</button>
+
+            <div class="status-bar">
+                <span id="saveStatus">Not saved yet</span>
+            </div>
 
         </form>
 
     </div>
 
-    <!-- CENTER PANEL -->
-    <div class="panel answer">
-
-        <h4>{{ data.student_name }}</h4>
-
+    <!-- ================= ANSWER ================= -->
+    <div id="answerPanel" class="panel answer">
         <iframe src="/{{ data.file_path }}"></iframe>
-
         <div id="overlay"></div>
-
     </div>
 
-    <!-- RIGHT PANEL -->
-    <div class="panel qp">
-
-        <button onclick="loadQP()">Question Paper</button>
-        <button onclick="loadMA()">Model Answer</button>
-
-        <iframe id="viewer"></iframe>
-
+    <!-- ================= SIDE PANEL ================= -->
+    <div id="sidePanel" class="panel side-panel">
+        <iframe id="viewer" class="viewer"></iframe>
     </div>
 
 </div>
-<div class="toolsPanel">
 
-    <h3>Evaluation Tools</h3>
-
-    <button class="toolBtn" onclick="selectTool('✔', this)">✔ Correct</button>
-    <button class="toolBtn" onclick="selectTool('✖', this)">✖ Wrong</button>
-    <button class="toolBtn" onclick="selectTool('🔁', this)">🔁 Repeat</button>
-
-    <button onclick="clearTool()">❌ Exit Marking</button>
-    <button onclick="undo()">↩ Undo</button>
-
+<!-- ================= TOOLBOX ================= -->
+<div class="toolbox">
+    <button class="toolBtn" onclick="selectTool('✔', this)">✔</button>
+    <button class="toolBtn" onclick="selectTool('✖', this)">✖</button>
+    <button class="toolBtn" onclick="selectTool('🔁', this)">🔁</button>
+    <button onclick="clearTool()">❌</button>
+    <button onclick="undo()">↩</button>
 </div>
 
 <script>
 
+    /* ---------- STATUS ---------- */
+    function setDraft() {
+        document.getElementById("statusField").value = "draft";
+    }
+
+    function setFinal() {
+        document.getElementById("statusField").value = "submitted";
+    }
+
+    function showSaved() {
+        document.getElementById("saveStatus").innerText = "Saved just now";
+    }
+
+    /* ---------- TOGGLE VIEW ---------- */
+    function resetButtons() {
+        document.querySelectorAll(".toggle-group button").forEach(b => b.classList.remove("active"))
+    }
+
+    function showAnswer() {
+        resetButtons()
+        document.getElementById("btnAnswer").classList.add("active")
+        document.getElementById("sidePanel").classList.remove("active")
+    }
+
+    function showQP() {
+        resetButtons()
+        document.getElementById("btnQP").classList.add("active")
+        loadQP()
+        document.getElementById("sidePanel").classList.add("active")
+    }
+
+    function showMA() {
+        resetButtons()
+        document.getElementById("btnMA").classList.add("active")
+        loadMA()
+        document.getElementById("sidePanel").classList.add("active")
+    }
+
     /* ---------- LOAD FILES ---------- */
-
     function loadQP() {
-        const qp = "{{ question_paper if question_paper else '' }}";
-
+        const qp = "{{ question_paper if question_paper else '' }}"
         if (qp && qp !== "None") {
-            document.getElementById("viewer").src = "/uploads/" + qp;
-        } else {
-            alert("No Question Paper Uploaded");
-        }
+            document.getElementById("viewer").src = "/uploads/" + qp
+        } else alert("No Question Paper")
     }
 
     function loadMA() {
-        const ma = "{{ model_answer if model_answer else '' }}";
-
+        const ma = "{{ model_answer if model_answer else '' }}"
         if (ma && ma !== "None") {
-            document.getElementById("viewer").src = "/uploads/" + ma;
-        } else {
-            alert("No Model Answer Uploaded");
-        }
+            document.getElementById("viewer").src = "/uploads/" + ma
+        } else alert("No Model Answer")
     }
 
-
-    /* ---------- VALIDATION ---------- */
-
+    /* ---------- MARK LOGIC (UNCHANGED) ---------- */
     function validateMark(input, type) {
         let val = parseFloat(input.value)
         if (isNaN(val)) return
@@ -199,18 +318,12 @@
         calculateTotal()
     }
 
-
-    /* ---------- BEST OF LOGIC ---------- */
-
-    function getBest(className, count) {
-        let inputs = document.querySelectorAll("." + className)
+    function getBest(cls, count) {
         let arr = []
-
-        inputs.forEach(i => {
+        document.querySelectorAll("." + cls).forEach(i => {
             let v = parseFloat(i.value)
             if (!isNaN(v)) arr.push(v)
         })
-
         arr.sort((a, b) => b - a)
         return arr.slice(0, count).reduce((a, b) => a + b, 0)
     }
@@ -223,96 +336,48 @@
     function syncTotal() {
         document.getElementById("totalInput").value =
             document.getElementById("total").innerText
+        showSaved()
     }
 
-
-    /* ---------- OVERLAY / MARKING SYSTEM ---------- */
-
-    let selectedTool = null;
-    let history = [];
-
-    /* ---------- TOOL SELECT ---------- */
+    /* ---------- MARKING TOOL ---------- */
+    let selectedTool = null
+    let history = []
 
     function selectTool(tool, btn) {
-
-        const overlay = document.getElementById("overlay");
-
-        // 🔥 If same tool clicked → deselect
-        if (selectedTool === tool) {
-            clearTool();
-            return;
-        }
-
-        // 🔥 Always reset first (IMPORTANT FIX)
-        clearTool();
-
-        // Activate new tool
-        selectedTool = tool;
-        overlay.style.pointerEvents = "auto";
-
-        btn.classList.add("active");
+        clearTool()
+        selectedTool = tool
+        document.getElementById("overlay").style.pointerEvents = "auto"
+        btn.classList.add("active")
     }
-
-
-    /* ---------- CLEAR TOOL ---------- */
 
     function clearTool() {
-
-        selectedTool = null;
-
-        const overlay = document.getElementById("overlay");
-        overlay.style.pointerEvents = "none";
-
-        // remove all highlights
-        document.querySelectorAll(".toolBtn").forEach(b => {
-            b.classList.remove("active");
-        });
+        selectedTool = null
+        document.getElementById("overlay").style.pointerEvents = "none"
+        document.querySelectorAll(".toolBtn").forEach(b => b.classList.remove("active"))
     }
 
+    document.getElementById("overlay").addEventListener("click", function (e) {
+        if (!selectedTool) return
 
-    /* ---------- OVERLAY CLICK ---------- */
+        let mark = document.createElement("div")
+        mark.innerText = selectedTool
+        mark.style.position = "absolute"
+        mark.style.left = e.offsetX + "px"
+        mark.style.top = e.offsetY + "px"
+        mark.style.fontSize = "20px"
+        mark.style.fontWeight = "bold"
 
-    document.addEventListener("DOMContentLoaded", function () {
-
-        const overlay = document.getElementById("overlay");
-
-        overlay.style.pointerEvents = "none";
-
-        overlay.addEventListener("click", function (e) {
-
-            if (!selectedTool) return;
-
-            let mark = document.createElement("div");
-
-            mark.innerText = selectedTool;
-            mark.style.position = "absolute";
-            mark.style.left = e.offsetX + "px";
-            mark.style.top = e.offsetY + "px";
-            mark.style.fontSize = "20px";
-            mark.style.fontWeight = "bold";
-
-            overlay.appendChild(mark);
-            history.push(mark);
-        });
-
-    });
-
-
-    /* ---------- UNDO ---------- */
+        this.appendChild(mark)
+        history.push(mark)
+    })
 
     function undo() {
-        let last = history.pop();
-        if (last) last.remove();
+        let last = history.pop()
+        if (last) last.remove()
     }
-
-
-    /* ---------- INIT ---------- */
 
     calculateTotal()
 
-</script>
-<script>
-    window.onload = loadQP;
 </script>
 
 <a href="/view_student_answers/{{ assignment_id}}">Back</a>
